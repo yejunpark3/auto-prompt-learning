@@ -44,7 +44,7 @@ def build_agents(
         persona=caller_persona,
         name=caller_name,
         system_prompt=caller_prompt(
-            personas.render_profile(caller_persona), caller_name, purpose
+            personas.render_profile(caller_persona), purpose
         ),
         llm=llm,
         tools=[END_CALL_TOOL],
@@ -53,9 +53,7 @@ def build_agents(
         role="callee",
         persona=callee_persona,
         name=callee_name,
-        system_prompt=callee_prompt(
-            personas.render_profile(callee_persona), callee_name
-        ),
+        system_prompt=callee_prompt(personas.render_profile(callee_persona)),
         llm=llm,
         tools=[END_CALL_TOOL],
     )

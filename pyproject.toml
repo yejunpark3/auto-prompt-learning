@@ -10,4 +10,5 @@ dependencies = [
     "mcp>=2.3.0",
     "mlx-lm>=0.32.2",
     "pyarrow>=26.0.0",
+    "pyyaml>=6.0.3",
 ]

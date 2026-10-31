@@ -4,6 +4,7 @@ from functools import cache
 
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
+import yaml
 from huggingface_hub import snapshot_download
 
 DATASET_ID = "nvidia/Nemotron-Personas-Korea"
@@ -68,27 +69,6 @@ def summarize(persona: dict) -> str:
     )
 
 
-def _join(value) -> str:
-    return ", ".join(value) if isinstance(value, list) else str(value)
-
-
 def render_profile(persona: dict) -> str:
-    p = persona
-    return "\n".join(
-        [
-            f"이름: {persona_name(p)}",
-            f"성별/나이: {p['sex']}, {p['age']}세",
-            f"거주지: {p['district']}",
-            f"직업: {p['occupation']}",
-            f"학력: {p['education_level']}",
-            f"혼인/가구: {p['marital_status']}, {p['family_type']}",
-            f"주거: {p['housing_type']}",
-            "",
-            f"[한 줄 소개] {p['persona']}",
-            f"[문화적 배경/말투] {p['cultural_background']}",
-            f"[직업 생활] {p['professional_persona']}",
-            f"[가족] {p['family_persona']}",
-            f"[취미] {p['hobbies_and_interests']}",
-            f"[특기] {_join(p['skills_and_expertise_list'])}",
-        ]
-    )
+    data = {k: v for k, v in persona.items() if k != "uuid"}
+    return yaml.dump(data, allow_unicode=True, sort_keys=False)
