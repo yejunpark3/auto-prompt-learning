@@ -77,6 +77,15 @@ _PROFILE_FIELDS = (
 )
 
 
+# 발신자(상담원)가 통화 전에 아는 수신자 정보.
+CALLER_KNOWN_FIELDS = ("sex",)
+
+
+def render_known(persona: dict) -> str:
+    data = {k: persona[k] for k in CALLER_KNOWN_FIELDS}
+    return yaml.dump(data, allow_unicode=True, sort_keys=False)
+
+
 def render_profile(persona: dict) -> str:
     data = {k: persona[k] for k in _PROFILE_FIELDS}
     return yaml.dump(data, allow_unicode=True, sort_keys=False)

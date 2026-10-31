@@ -3,7 +3,7 @@
 [Nemotron-Personas-Korea](https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea)에서 페르소나 한 명을 뽑아 수신자로 만들고, 발신자 에이전트가 전화를 거는 상황을 litellm으로 텍스트 시뮬레이션한다. 환경(텔레마케팅, 설문, 안내 전화 등)은 `prompt/system.md`와 `wiki/`로 정하며, 기본 예시는 텔레마케팅이다. 통화 기록은 JSON으로 저장된다.
 
 - 발신자는 페르소나 없이 `prompt/system.md`를 시스템 프롬프트로 쓰고, `--purpose`로 준 통화 목적을 안다. 수신자는 모르는 번호로 전화를 받는다.
-- 통화 전에 발신자가 계획을 한 번 세우고(`--plan-max-tokens`, 기본 8192), 그 계획이 시스템 프롬프트의 `[Plan]`으로 붙어 통화 내내 참고된다. 수신자 정보는 주지 않는다.
+- 통화 전에 발신자가 계획을 한 번 세우고(`--plan-max-tokens`, 기본 8192), 그 계획이 시스템 프롬프트의 `[Plan]`으로 붙어 통화 내내 참고된다. 수신자 정보 중 `personas.CALLER_KNOWN_FIELDS`(지금은 성별)만 시스템 프롬프트의 `[Callee]`로 받는다.
 - 수신자가 먼저 고정 대사 "여보세요?"로 받고(모델 호출 없음), 이후 번갈아 말한다. 한쪽이 `end_call` 도구(tool calling)를 호출하면 통화가 끝난다.
 
 ## 환경 구성

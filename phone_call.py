@@ -62,7 +62,9 @@ def build_agents(
         role="caller",
         persona=None,
         name="발신자",
-        system_prompt=caller_prompt(caller_profile, purpose),
+        system_prompt=caller_prompt(
+            caller_profile, purpose, personas.render_known(callee_persona)
+        ),
         llm=llm,
         tools=[END_CALL_TOOL, *(wiki_store.WIKI_READ_TOOLS if use_wiki else [])],
         tool_runner=wiki_store.run_read_tool if use_wiki else None,

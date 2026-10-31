@@ -34,8 +34,11 @@ SYSTEM_PROMPT_PATH =str(Path(__file__).parent / "prompt" / "system.md")
 CHANNEL = "[Channel]\nKOREAN_VOICE_PHONE_CALL (한 번에 한두 문장, 대사만)"
 
 
-def caller_prompt(profile: str, purpose: str) -> str:
-    return f"[Persona]\n{profile}\n{CHANNEL}\n[Role]\nCALLER\n[Goal]\n{purpose}"
+def caller_prompt(profile: str, purpose: str, callee_info: str) -> str:
+    return (
+        f"[Persona]\n{profile}\n{CHANNEL}\n[Role]\nCALLER\n"
+        f"[Callee]\n{callee_info}[Goal]\n{purpose}"
+    )
 
 
 def callee_prompt(profile: str) -> str:
