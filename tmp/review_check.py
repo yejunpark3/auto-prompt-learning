@@ -26,7 +26,7 @@ def main() -> None:
         flag = "" if achieved[0] == achieved[1] else "  <-- 불일치"
         print(f"{f.name} [{record['end_reason']}] 달성: {achieved}{flag}")
         for r in runs:
-            print("   ", (r["notes"].split("\n", 1)[0] if r else "(리뷰 실패)"))
+            print("   ", (r["notes"].split("\n", 1)[0] if r else "(리뷰 실패: submit_review 호출 없음/형식 오류/잘림)"))
 
 
 if __name__ == "__main__":

@@ -53,11 +53,32 @@ def load_caller_profile(path: str = SYSTEM_PROMPT_PATH) -> str:
     return Path(path).read_text(encoding="utf-8").strip()
 
 
+SUBMIT_REVIEW_NAME = "submit_review"
+SUBMIT_REVIEW_TOOL = {
+    "type": "function",
+    "function": {
+        "name": SUBMIT_REVIEW_NAME,
+        "description": "통화 평가를 제출한다",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "achieved": {
+                    "type": "boolean",
+                    "description": "상대가 통화 목적에 해당하는 요청에 명확히 응했는가. 검토·재연락 약속, 거절, 얼버무림은 false",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "그렇게 판단한 근거, 효과적이었던 말, 문제였던 말, 근거 없이 지어낸 정보를 3~5줄로",
+                },
+            },
+            "required": ["achieved", "notes"],
+        },
+    },
+}
+
 REVIEW_REQUEST = (
     "아래는 발신자가 건 전화 기록이다. 통화 목적: {purpose}\n종료 사유: {end_reason}\n\n{transcript}\n\n"
-    "첫 줄에 `달성: 예` 또는 `달성: 아니오`(상대가 통화 목적에 해당하는 요청에 명확히 응했는가. "
-    "검토·재연락 약속, 거절, 얼버무림은 아니오). "
-    "이어서 그렇게 판단한 근거, 효과적이었던 말, 문제였던 말, 근거 없이 지어낸 정보를 3~5줄로 써라."
+    "이 통화를 평가해 submit_review 도구로 제출하라."
 )
 
 LEARN_REQUEST = (

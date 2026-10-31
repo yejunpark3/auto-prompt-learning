@@ -5,7 +5,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
-LOOPY = {"repetition_loop", "max_turns", "empty_response", "error"}
+LOOPY = {"repetition_loop", "max_turns", "empty_response"}
+# 서버·연결 오류는 프롬프트·코드 품질 문제가 아니므로 루프성 종료와 따로 센다.
 
 
 def main() -> None:
@@ -29,6 +30,8 @@ def main() -> None:
     print(f"통화 {len(records)}건 ({files[0].name} ~ {files[-1].name}), 리뷰 있음 {len(reviewed)}건")
     print(f"종료 사유: {dict(ends)}")
     print(f"루프성 종료: {sum(ends[k] for k in LOOPY)}건")
+    if ends["error"]:
+        print(f"서버 오류 종료: {ends['error']}건 (진단에서 제외하고 서버를 점검한 뒤 해당 통화를 다시 돌린다)")
     print(f"스팸 신고: {rate('spam')}")
     print(f"목적 달성: {rate('achieved')}")
     print(f"평균 턴: {sum(r['num_turns'] for r in records) / len(records):.1f}")
