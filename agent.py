@@ -1,5 +1,6 @@
 import re
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
 import litellm
@@ -35,6 +36,9 @@ _BRACKET_RE = re.compile(r"\[[^\]]*\]")
 _NON_SPEECH_RE = re.compile(
     "[\u2600-\u27bf\U0001f000-\U0001faff\ufe0f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]"
 )
+# 한 발화 안에서 도구를 부르고 결과를 받아 다시 생성하는 최대 횟수.
+MAX_TOOL_ROUNDS = 3
+MAX_TOOL_RESULT_CHARS = 3000
 _QUOTES = "\"'“”‘’「」"
 
 
@@ -91,6 +95,8 @@ class PhoneAgent:
     system_prompt: str
     llm: LLMConfig
     tools: list[dict] | None = None
+    # (이름, 인자)를 받아 결과 문자열을 돌려주는 도구 실행기. end_call 외의 도구 호출을 처리한다.
+    tool_runner: Callable[[str, str], str] | None = None
     messages: list[dict] = field(init=False)
 
     def __post_init__(self):
@@ -122,6 +128,11 @@ class PhoneAgent:
             "usage": resp.usage.model_dump() if resp.usage else None,
             "reasoning": getattr(message, "reasoning_content", None)
             or getattr(message, "reasoning", None),
+            "tool_calls": [
+                {"id": tc.id, "name": tc.function.name, "arguments": tc.function.arguments}
+                for tc in message.tool_calls or []
+                if tc.function.name != END_CALL_NAME
+            ],
         }
         content = message.content or ""
         # 서버가 tool_calls로 파싱하지 못하고 content에 <tool_call> 원문을 남기는 경우도 본다.
@@ -137,30 +148,90 @@ class PhoneAgent:
     def plan(self, request: str) -> dict | None:
         """통화 전에 계획을 한 번 세워 시스템 프롬프트의 [Plan]에 붙인다.
 
+        위키 도구가 있으면 계획을 세우는 동안 조회할 수 있다(end_call은 제외).
         비었거나 max_tokens에서 잘린 계획은 붙이지 않고 None을 돌려준다.
         """
-        raw, _, meta = self._complete(
-            messages=[
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": request},
-            ],
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": request},
+        ]
+        plan_tools = [t for t in self.tools or [] if t["function"]["name"] != END_CALL_NAME]
+        raw, _, meta, lookups = self._generate(
+            messages=messages,
             max_tokens=self.llm.plan_max_tokens,
-            tools=None,
+            tools=plan_tools,
+            final_tools=[],
         )
         text = _strip_think(raw).strip()
         if not text or meta["finish_reason"] == "length":
             return None
         self.system_prompt = with_plan(self.system_prompt, text)
         self.messages[0]["content"] = self.system_prompt
-        return {"text": text, **meta}
+        return {"text": text, **meta, **({"wiki": lookups} if lookups else {})}
+
+    def _run_tools(self, messages: list[dict], raw: str, calls: list[dict]) -> list[dict]:
+        """도구 호출을 실행해 assistant/tool 메시지를 messages에 붙이고 조회 기록을 돌려준다."""
+        messages.append(
+            {
+                "role": "assistant",
+                "content": _TOOL_CALL_RE.sub("", _strip_think(raw)).strip(),
+                "tool_calls": [
+                    {
+                        "id": c["id"],
+                        "type": "function",
+                        "function": {"name": c["name"], "arguments": c["arguments"] or "{}"},
+                    }
+                    for c in calls
+                ],
+            }
+        )
+        lookups = []
+        for c in calls:
+            result = self.tool_runner(c["name"], c["arguments"] or "{}")
+            messages.append(
+                {"role": "tool", "tool_call_id": c["id"], "content": result[:MAX_TOOL_RESULT_CHARS]}
+            )
+            lookups.append({"name": c["name"], "arguments": c["arguments"], "result": result})
+        return lookups
+
+    def _generate(
+        self, messages=None, max_tokens=None, tools=None, final_tools=None
+    ) -> tuple[str, bool, dict, list[dict]]:
+        """도구 호출을 처리하며 한 번 생성한다. 마지막 라운드는 final_tools만 열어 반드시 글로 답하게 한다.
+
+        기본값은 통화 발화용: messages=self.messages, 모든 도구, 마지막 라운드는 end_call만.
+        """
+        messages = self.messages if messages is None else messages
+        if tools is None:
+            tools = self.tools
+        if final_tools is None:
+            final_tools = [t for t in self.tools or [] if t["function"]["name"] == END_CALL_NAME]
+        has_lookup = any(t["function"]["name"] != END_CALL_NAME for t in tools or [])
+        lookups: list[dict] = []
+        for round_ in range(MAX_TOOL_ROUNDS + 1):
+            last = round_ == MAX_TOOL_ROUNDS or not (self.tool_runner and has_lookup)
+            raw, ended, meta = self._complete(
+                messages=messages,
+                max_tokens=max_tokens,
+                tools=final_tools if last else tools,
+            )
+            calls = meta.pop("tool_calls")
+            if last or ended or not calls:
+                break
+            lookups += self._run_tools(messages, raw, calls)
+        return raw, ended, meta, lookups
 
     def respond(self, incoming: str) -> tuple[str, bool, dict]:
         self.messages.append({"role": "user", "content": incoming})
-        text, ended, meta = "", False, {}
+        text, ended, meta, lookups = "", False, {}, []
         for _ in range(2):  # 빈 응답이면 한 번 재시도 (바로 끊은 경우는 제외)
-            raw, ended, meta = self._complete()
+            raw, ended, meta, used = self._generate()
+            lookups += used
             text = clean_utterance(raw)
-            if text or ended:
+            # 도구를 쓴 뒤 비었으면 다시 시도하지 않는다 (이미 늘어난 기록 위에서 호출이 불어난다).
+            if text or ended or used:
                 break
+        if lookups:
+            meta["wiki"] = lookups
         self.messages.append({"role": "assistant", "content": text})
         return text, ended, meta

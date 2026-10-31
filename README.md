@@ -49,6 +49,7 @@ uv run main.py --purpose "월 9,900원 실손보험 가입 권유" --seed 1
 | `--model`, `--api-base` | litellm 모델 문자열과 엔드포인트 |
 | `--temperature`, `--max-tokens` | 샘플링 설정 |
 | `--plan-max-tokens` | 통화 전 계획 생성의 max_tokens (기본 8192, 0이면 계획 생략) |
+| `--no-wiki` | 상담원의 위키 도구 사용을 끈다 |
 | `--out` | 기록 저장 폴더 (기본 `agent_workspace/conversation_history`) |
 
 호스팅 모델을 쓰려면 `--api-base ""`로 `api_base`와 MLX 전용 옵션을 끈다.
@@ -79,7 +80,24 @@ turns: [{turn, speaker, name, text, latency_s, finish_reason, usage, reasoning}]
 | `prompts.py` | 전화 규칙과 프롬프트 조립 (발신자 본문은 `prompt/system.md`) |
 | `agent.py` | `LLMConfig`, `PhoneAgent` (litellm 호출, 출력 정리) |
 | `phone_call.py` | 통화 루프, 종료 판정, 기록 저장 |
+| `wiki_store.py` | 상담원 위키(`wiki/`) CRUD, 임베딩·파일명 검색, 에이전트 도구 스키마, CLI |
 | `main.py` | CLI |
+
+## 위키
+
+`wiki/`에 마크다운 문서를 두면 상담원이 참고할 지식 베이스가 된다(하위 폴더 가능). 통화 중 상담원(발신자)은 `wiki_read`, `wiki_search`, `wiki_find` 도구를 쓸 수 있다(수신자는 제외). 위키에 문서가 있으면 통화 전에 인덱스를 맞추고 모델을 미리 올리며, 통화 전 계획 단계에서도 같은 도구로 조회할 수 있다. 계획 한 번, 발화 한 번마다 도구는 최대 3번 부른다. `--no-wiki`로 끈다. 쓰기 도구(`wiki_create/update/delete`)는 `WIKI_TOOLS`와 `run_tool`에 있지만 상담원에게는 주지 않는다. 조회 내역은 턴 기록과 `caller.plan`의 `wiki`에 남는다.
+
+- 임베딩 검색은 `mlx-community/embeddinggemma-2-bf16`(첫 사용 시 약 1.5GB 다운로드)을 쓴다. 문서를 헤딩 단위 청크로 나눠 `wiki/.index/`(git 제외)에 저장하고, 검색 때마다 바뀐 파일만 다시 임베딩한다. 에디터로 직접 고쳐도 반영된다.
+- 파일명 검색은 모델 없이 부분일치, glob(`상품/*`), 오타 허용 매칭을 지원한다.
+- 경로는 `wiki/` 안으로 제한되고 숨김 경로(`.index` 등)는 거부한다.
+
+```
+uv run wiki_store.py create 상품/실손보험 --file draft.md   # 또는 stdin
+uv run wiki_store.py search "보험료가 얼마예요" -k 3
+uv run wiki_store.py find 실손
+uv run wiki_store.py update 상품/실손보험 --append < note.md
+uv run wiki_store.py read|delete|list|reindex
+```
 
 ## 알려진 한계
 

@@ -6,11 +6,13 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 import personas
+import wiki_store
 from agent import LLMConfig, PhoneAgent
 from prompts import (
     CALLEE_GREETING,
     END_CALL_TOOL,
     PLAN_REQUEST,
+    PLAN_WIKI_HINT,
     RING_CUE,
     WRAP_UP_HINT,
     callee_prompt,
@@ -36,17 +38,32 @@ def _is_repeat(prev: str, text: str) -> bool:
     return SequenceMatcher(None, prev, text).ratio() >= REPEAT_RATIO
 
 
+def _wiki_ready() -> bool:
+    """위키에 문서가 있고 인덱스·모델을 미리 올릴 수 있을 때만 상담원에게 위키 도구를 준다."""
+    if not wiki_store.list_pages():
+        return False
+    try:
+        wiki_store.warm()
+    except Exception as e:
+        print(f"[경고] 위키를 쓸 수 없어 도구 없이 진행합니다: {type(e).__name__}: {e}", flush=True)
+        return False
+    return True
+
+
 def build_agents(
-    caller_profile: str, callee_persona: dict, purpose: str, llm: LLMConfig
+    caller_profile: str, callee_persona: dict, purpose: str, llm: LLMConfig,
+    wiki: bool = True,
 ) -> tuple[PhoneAgent, PhoneAgent]:
     callee_name = personas.persona_name(callee_persona)
+    use_wiki = wiki and _wiki_ready()
     caller = PhoneAgent(
         role="caller",
         persona=None,
         name="상담원",
         system_prompt=caller_prompt(caller_profile, purpose),
         llm=llm,
-        tools=[END_CALL_TOOL],
+        tools=[END_CALL_TOOL, *(wiki_store.WIKI_READ_TOOLS if use_wiki else [])],
+        tool_runner=wiki_store.run_read_tool if use_wiki else None,
     )
     callee = PhoneAgent(
         role="callee",
@@ -84,7 +101,9 @@ def simulate_call(
     plan = None
     if caller.llm.plan_max_tokens > 0:
         try:
-            plan = caller.plan(PLAN_REQUEST)
+            plan = caller.plan(
+                PLAN_REQUEST.format(wiki=PLAN_WIKI_HINT if caller.tool_runner else "")
+            )
             if plan:
                 on_plan(plan)
             else:

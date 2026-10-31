@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
         default=LLMConfig.plan_max_tokens,
         help="통화 전 계획 생성의 max_tokens (0이면 계획 생략)",
     )
+    p.add_argument("--no-wiki", action="store_true", help="상담원에게 위키 도구(읽기·검색)를 주지 않는다")
     p.add_argument("--out", default=DEFAULT_OUT_DIR)
     return p.parse_args()
 
@@ -63,7 +64,9 @@ def main() -> None:
         print(f"수신자: {personas.summarize(callee_p)}")
         print(f"목적: {args.purpose}\n")
 
-        caller, callee = build_agents(caller_profile, callee_p, args.purpose, llm)
+        caller, callee = build_agents(
+            caller_profile, callee_p, args.purpose, llm, wiki=not args.no_wiki
+        )
         record = simulate_call(caller, callee, args.purpose, max_turns=args.max_turns)
         path = save_record(record, args.out)
         print(f"\n종료: {record['end_reason']} ({record['num_turns']}턴) → {path}")

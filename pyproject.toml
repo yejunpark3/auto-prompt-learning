@@ -9,6 +9,8 @@ dependencies = [
     "litellm>=1.106.6",
     "mcp>=2.3.0",
     "mlx-lm>=0.32.2",
+    "mlx-vlm>=0.7.11",
+    "numpy>=2.5.4",
     "pyarrow>=26.0.0",
     "pyyaml>=6.0.3",
 ]

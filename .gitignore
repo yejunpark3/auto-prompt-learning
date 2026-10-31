@@ -11,3 +11,5 @@ wheels/
 
 # Agent Workspace
 agent_workspace/
+# Wiki embedding index
+wiki/.index/
