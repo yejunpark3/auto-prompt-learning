@@ -1,5 +1,66 @@
-def main():
-    print("Hello from auto-prompt-learning!")
+import argparse
+import random
+
+import personas
+from agent import DEFAULT_API_BASE, DEFAULT_MODEL, LLMConfig
+from phone_call import DEFAULT_OUT_DIR, build_agents, save_record, simulate_call
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Nemotron-Personas-Korea 페르소나 두 명의 전화통화 시뮬레이션"
+    )
+    p.add_argument("--purpose", required=True, help="발신자가 전화를 건 목적")
+    p.add_argument("--caller-uuid", help="발신자 페르소나 uuid (없으면 무작위)")
+    p.add_argument("--callee-uuid", help="수신자 페르소나 uuid (없으면 무작위)")
+    p.add_argument("--seed", type=int, help="페르소나 샘플링 시드")
+    p.add_argument("--max-turns", type=int, default=30)
+    p.add_argument("--n", type=int, default=1, help="페르소나를 새로 뽑아 반복할 통화 수")
+    p.add_argument("--model", default=DEFAULT_MODEL, help="litellm 모델 문자열")
+    p.add_argument(
+        "--api-base",
+        default=DEFAULT_API_BASE,
+        help='빈 문자열이면 api_base와 MLX 전용 옵션을 끈다 (예: --model gemini/gemini-2.5-flash --api-base "")',
+    )
+    p.add_argument("--temperature", type=float, default=0.7)
+    p.add_argument("--max-tokens", type=int, default=256)
+    p.add_argument("--out", default=DEFAULT_OUT_DIR)
+    return p.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    rng = random.Random(args.seed)
+    llm = LLMConfig(
+        model=args.model,
+        api_base=args.api_base or None,
+        temperature=args.temperature,
+        max_tokens=args.max_tokens,
+    )
+
+    for i in range(args.n):
+        # uuid를 지정한 경우 첫 통화에만 쓰고, 이후 통화는 새로 뽑는다.
+        pinned = i == 0
+        caller_p = (
+            personas.get_persona(args.caller_uuid)
+            if pinned and args.caller_uuid
+            else personas.sample_persona(rng)
+        )
+        callee_p = (
+            personas.get_persona(args.callee_uuid)
+            if pinned and args.callee_uuid
+            else personas.sample_persona(rng, exclude_uuid=caller_p["uuid"])
+        )
+
+        print(f"\n=== 통화 {i + 1}/{args.n} ===")
+        print(f"발신자: {personas.summarize(caller_p)}")
+        print(f"수신자: {personas.summarize(callee_p)}")
+        print(f"목적: {args.purpose}\n")
+
+        caller, callee = build_agents(caller_p, callee_p, args.purpose, llm)
+        record = simulate_call(caller, callee, args.purpose, max_turns=args.max_turns)
+        path = save_record(record, args.out)
+        print(f"\n종료: {record['end_reason']} ({record['num_turns']}턴) → {path}")
 
 
 if __name__ == "__main__":

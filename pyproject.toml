@@ -4,4 +4,9 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "huggingface-hub>=1.33.0",
+    "litellm>=1.106.6",
+    "mlx-lm>=0.32.2",
+    "pyarrow>=26.0.0",
+]
