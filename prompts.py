@@ -8,12 +8,15 @@ END_CALL_TOOL = {
     },
 }
 
-RING_CUE = "(전화벨이 울립니다. 발신자 표시: 모르는 번호) 전화를 받아 첫 마디만 하세요."
+RING_CUE = "[PHONE_CALLING_FROM_UNKNOWN_NUMBER]"
 WRAP_UP_HINT = "(통화가 길어지고 있습니다. 자연스럽게 마무리하세요.)"
 
+CHANNEL = "[Channel]\nKOREAN_VOICE_PHONE_CALL (한 번에 한두 문장, 대사만)"
+
+
 def caller_prompt(profile: str, purpose: str) -> str:
-    return f"[Persona]\n{profile}\n[Goal]\n{purpose}"
+    return f"[Persona]\n{profile}\n{CHANNEL}\n[Role]\nCALLER\n[Goal]\n{purpose}"
 
 
 def callee_prompt(profile: str) -> str:
-    return f"[Persona]\n{profile}"
+    return f"[Persona]\n{profile}\n{CHANNEL}\n[Role]\nCALLEE"

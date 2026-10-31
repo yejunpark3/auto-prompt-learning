@@ -22,8 +22,8 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_API_BASE,
         help='빈 문자열이면 api_base와 MLX 전용 옵션을 끈다 (예: --model gemini/gemini-2.5-flash --api-base "")',
     )
-    p.add_argument("--temperature", type=float, default=0.7)
-    p.add_argument("--max-tokens", type=int, default=256)
+    p.add_argument("--temperature", type=float, default=LLMConfig.temperature)
+    p.add_argument("--max-tokens", type=int, default=LLMConfig.max_tokens)
     p.add_argument("--out", default=DEFAULT_OUT_DIR)
     return p.parse_args()
 

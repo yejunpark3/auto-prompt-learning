@@ -15,9 +15,9 @@ uv sync
 
 ## 로컬 서버
 
-기본 설정은 `optiq serve`로 띄운 로컬 서버(`http://127.0.0.1:8080/v1`)의 `mlx-community/Qwen3.5-9B-OptiQ-4bit:no-think`(thinking 끈 변형)를 쓴다. `optiq serve`는 `sk-optiq-` 접두사의 키를 요구해서 자리표시 키 `sk-optiq-local`을 보낸다.
+기본 설정은 `optiq serve`로 띄운 로컬 서버(`http://127.0.0.1:8080/v1`)의 `mlx-community/Qwen3.5-9B-OptiQ-4bit:think`(thinking 켠 변형)를 쓴다. thinking 토큰도 `max_tokens`에 포함되므로 기본값을 2048로 두어 think 길이의 상한으로 쓴다(넘으면 대사가 비어 한 번 재시도한다. `--max-tokens`로 조절). `optiq serve`는 `sk-optiq-` 접두사의 키를 요구해서 자리표시 키 `sk-optiq-local`을 보낸다.
 
-로컬 서버(`api_base`를 줄 때)에는 요청마다 `enable_thinking: false`, `top_k: 20`, `presence_penalty: 1.5`도 함께 보낸다. `optiq serve`는 이 필드를 받아들이지만 실제로 반영하는지는 확인하지 않았다.
+로컬 서버(`api_base`를 줄 때)에는 요청마다 `top_k: 20`, `presence_penalty: 1.5`도 함께 보낸다(기본 `temperature 1.0`, `top_p 0.95`는 Qwen3.5 thinking 권장값). `optiq serve`는 이 필드를 받아들이지만 실제로 반영하는지는 확인하지 않았다.
 
 통화 종료에 tool calling을 쓴다. `mlx_lm.server`는 `tools`를 `tool_calls`로 파싱해 준다. 서버가 파싱하지 않고 content에 `<tool_call>` 블록을 남기면 그 블록에서 `end_call`을 찾고 발화에서는 지운다.
 
@@ -62,7 +62,7 @@ uv run main.py --purpose "..." --model gemini/gemini-2.5-flash --api-base ""
 call_id, started_at, ended_at, purpose, end_reason, num_turns,
 llm: {model, api_base, temperature, top_p, max_tokens, extra_body},
 caller / callee: {uuid, name, system_prompt, persona(원본 26개 필드)},
-turns: [{turn, speaker, name, text, latency_s, usage}]
+turns: [{turn, speaker, name, text, latency_s, usage, reasoning}]
 ```
 
 `end_reason`: `hangup_by_caller`, `hangup_by_callee`, `max_turns`, `repetition_loop`(같은 화자가 직전 발화를 되풀이), `empty_response`, `error`.

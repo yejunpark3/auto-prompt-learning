@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Agent Workspace
+agent_workspace/
