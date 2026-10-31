@@ -74,7 +74,10 @@ def main() -> None:
             caller_profile, callee_p, args.purpose, llm, wiki=not args.no_wiki
         )
         record = simulate_call(caller, callee, args.purpose, max_turns=args.max_turns)
-        if args.learn_every:
+        # 서버·연결 오류로 끊긴 통화는 학습에 넣지 않고 같은 수신자로 다시 돌린다.
+        if args.learn_every and record["end_reason"] == "error":
+            print(f"[경고] 서버 오류로 끊긴 통화라 리뷰하지 않습니다 (다시 돌리기: --callee-uuid {callee_p['uuid']} --n 1)", flush=True)
+        elif args.learn_every:
             try:
                 record["review"] = reviewer.review_call(record, llm)
                 if record["review"] is None:
