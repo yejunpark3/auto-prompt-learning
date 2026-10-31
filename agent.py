@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass, field
 
 import litellm
 
+from prompts import END_CALL_NAME
+
 # 로컬에서 `optiq serve`로 띄워 둔 9B 서버. ':no-think'는 thinking을 끈 변형이다.
 DEFAULT_MODEL = "openai/mlx-community/Qwen3.5-9B-OptiQ-4bit:no-think"
 DEFAULT_API_BASE = "http://127.0.0.1:8080/v1"
@@ -20,7 +22,8 @@ _MLX_EXTRA_BODY = {
 
 # max_tokens로 잘려 닫는 태그가 없는 <think> 블록도 끝까지 지운다.
 _THINK_RE = re.compile(r"<think>.*?(?:</think>|\Z)", re.DOTALL)
-_LABEL_RE = re.compile(r"^\s*[\[(]?[가-힣A-Za-z0-9 ]{1,12}[\])]?\s*:\s*")
+_TOOL_CALL_RE = re.compile(r"<tool_call>.*?(?:</tool_call>|\Z)", re.DOTALL)
+_LABEL_RE =re.compile(r"^\s*[\[(]?[가-힣A-Za-z0-9 ]{1,12}[\])]?\s*:\s*")
 _ACTION_RE = re.compile(r"\([^)]*\)|\*[^*]*\*")
 _QUOTES = "\"'“”‘’「」"
 
@@ -50,17 +53,18 @@ class LLMConfig:
         return d
 
 
-def clean_utterance(text: str, hangup_token: str | None = None) -> str:
-    """모델 출력에서 thinking, 화자 라벨, 행동 묘사, 감싼 따옴표를 걷어낸다."""
+def _strip_think(text: str) -> str:
     text = _THINK_RE.sub("", text)
-    text = text.split("</think>")[-1]
-    token_found = bool(hangup_token and hangup_token in text)
-    if hangup_token:
-        text = text.replace(hangup_token, "")
+    return text.split("</think>")[-1]
+
+
+def clean_utterance(text: str) -> str:
+    """모델 출력에서 thinking, tool call 원문, 화자 라벨, 행동 묘사, 감싼 따옴표를 걷어낸다."""
+    text = _strip_think(text)
+    text = _TOOL_CALL_RE.sub("", text)
     text = _LABEL_RE.sub("", text, count=1)
     text = _ACTION_RE.sub("", text)
-    text = re.sub(r"\s+", " ", text).strip().strip(_QUOTES).strip()
-    return text + (f" {hangup_token}" if token_found else "")
+    return re.sub(r"\s+", " ", text).strip().strip(_QUOTES).strip()
 
 
 @dataclass
@@ -70,13 +74,13 @@ class PhoneAgent:
     name: str
     system_prompt: str
     llm: LLMConfig
-    hangup_token: str | None = None
+    tools: list[dict] | None = None
     messages: list[dict] = field(init=False)
 
     def __post_init__(self):
         self.messages = [{"role": "system", "content": self.system_prompt}]
 
-    def _complete(self) -> tuple[str, dict]:
+    def _complete(self) -> tuple[str, bool, dict]:
         kwargs = dict(
             model=self.llm.model,
             messages=self.messages,
@@ -88,21 +92,33 @@ class PhoneAgent:
         )
         if self.llm.extra_body:
             kwargs["extra_body"] = self.llm.extra_body
+        if self.tools:
+            kwargs["tools"] = self.tools
         t0 = time.perf_counter()
         resp = litellm.completion(**kwargs)
         meta = {
             "latency_s": round(time.perf_counter() - t0, 2),
             "usage": resp.usage.model_dump() if resp.usage else None,
         }
-        return resp.choices[0].message.content or "", meta
+        message = resp.choices[0].message
+        content = message.content or ""
+        # 서버가 tool_calls로 파싱하지 못하고 content에 <tool_call> 원문을 남기는 경우도 본다.
+        # thinking 안에서 언급만 한 호출은 세지 않도록 thinking을 먼저 걷어낸다.
+        ended = any(
+            tc.function.name == END_CALL_NAME for tc in message.tool_calls or []
+        ) or any(
+            END_CALL_NAME in block
+            for block in _TOOL_CALL_RE.findall(_strip_think(content))
+        )
+        return content, ended, meta
 
-    def respond(self, incoming: str) -> tuple[str, dict]:
+    def respond(self, incoming: str) -> tuple[str, bool, dict]:
         self.messages.append({"role": "user", "content": incoming})
-        text, meta = "", {}
-        for _ in range(2):  # 빈 응답이면 한 번 재시도
-            raw, meta = self._complete()
-            text = clean_utterance(raw, self.hangup_token)
-            if text:
+        text, ended, meta = "", False, {}
+        for _ in range(2):  # 빈 응답이면 한 번 재시도 (바로 끊은 경우는 제외)
+            raw, ended, meta = self._complete()
+            text = clean_utterance(raw)
+            if text or ended:
                 break
         self.messages.append({"role": "assistant", "content": text})
-        return text, meta
+        return text, ended, meta

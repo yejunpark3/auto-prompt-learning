@@ -8,7 +8,7 @@ from pathlib import Path
 import personas
 from agent import LLMConfig, PhoneAgent
 from prompts import (
-    HANGUP_TOKEN,
+    END_CALL_TOOL,
     RING_CUE,
     WRAP_UP_HINT,
     callee_prompt,
@@ -47,7 +47,7 @@ def build_agents(
             personas.render_profile(caller_persona), caller_name, purpose
         ),
         llm=llm,
-        hangup_token=HANGUP_TOKEN,
+        tools=[END_CALL_TOOL],
     )
     callee = PhoneAgent(
         role="callee",
@@ -57,7 +57,7 @@ def build_agents(
             personas.render_profile(callee_persona), callee_name
         ),
         llm=llm,
-        hangup_token=HANGUP_TOKEN,
+        tools=[END_CALL_TOOL],
     )
     return caller, callee
 
@@ -84,7 +84,7 @@ def simulate_call(
         if max_turns - len(turns) <= WRAP_UP_REMAINING and len(turns) > 0:
             incoming = f"{incoming} {WRAP_UP_HINT}"
         try:
-            text, meta = speaker.respond(incoming)
+            text, hung_up, meta = speaker.respond(incoming)
         except Exception as e:  # litellm 연결/응답 오류
             end_reason = "error"
             turns.append(
@@ -94,8 +94,6 @@ def simulate_call(
             print(f"[오류] {speaker.name}: {type(e).__name__}: {e}", flush=True)
             break
 
-        hung_up = HANGUP_TOKEN in text
-        text = text.replace(HANGUP_TOKEN, "").strip()
         turn = {"turn": len(turns), "speaker": speaker.role, "name": speaker.name,
                 "text": text, **meta}
         if hung_up:

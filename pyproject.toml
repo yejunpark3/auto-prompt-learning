@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "huggingface-hub>=1.33.0",
     "litellm>=1.106.6",
+    "mcp>=2.3.0",
     "mlx-lm>=0.32.2",
     "pyarrow>=26.0.0",
 ]

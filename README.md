@@ -3,7 +3,7 @@
 [Nemotron-Personas-Korea](https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea)에서 페르소나 두 명을 뽑아 발신자/수신자 에이전트로 만들고, litellm으로 LLM을 호출해 전화통화를 텍스트로 시뮬레이션한다. 통화 기록은 JSON으로 저장된다.
 
 - 발신자는 `--purpose`로 준 통화 목적을 알고 있고, 수신자는 모르는 번호로 전화를 받는다.
-- 수신자가 먼저 "여보세요"로 받고, 이후 번갈아 말한다. 한쪽이 `[통화종료]`를 붙이면 통화가 끝난다.
+- 수신자가 먼저 "여보세요"로 받고, 이후 번갈아 말한다. 한쪽이 `end_call` 도구(tool calling)를 호출하면 통화가 끝난다.
 
 ## 준비
 
@@ -18,6 +18,8 @@ uv sync
 기본 설정은 `optiq serve`로 띄운 로컬 서버(`http://127.0.0.1:8080/v1`)의 `mlx-community/Qwen3.5-9B-OptiQ-4bit:no-think`(thinking 끈 변형)를 쓴다. `optiq serve`는 `sk-optiq-` 접두사의 키를 요구해서 자리표시 키 `sk-optiq-local`을 보낸다.
 
 로컬 서버(`api_base`를 줄 때)에는 요청마다 `enable_thinking: false`, `top_k: 20`, `presence_penalty: 1.5`도 함께 보낸다. `optiq serve`는 이 필드를 받아들이지만 실제로 반영하는지는 확인하지 않았다.
+
+통화 종료에 tool calling을 쓴다. `mlx_lm.server`는 `tools`를 `tool_calls`로 파싱해 준다. 서버가 파싱하지 않고 content에 `<tool_call>` 블록을 남기면 그 블록에서 `end_call`을 찾고 발화에서는 지운다.
 
 `mlx_lm.server`로 더 작은 모델을 돌릴 수도 있다. 이 서버는 모델의 `generation_config.json`을 읽지 않아서 `presence_penalty`를 빼면 같은 말을 되풀이하는 루프에 빠지기 쉽다(4B에서 확인).
 
