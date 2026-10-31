@@ -13,6 +13,7 @@ import numpy as np
 
 WIKI_ROOT = Path(__file__).parent / "wiki"
 INDEX_DIR = WIKI_ROOT / ".index"
+READONLY_FILE = WIKI_ROOT / ".readonly"
 EMBED_MODEL = "mlx-community/embeddinggemma-2-bf16"
 
 QUERY_PREFIX = "task: search result | query: "
@@ -51,6 +52,21 @@ def _resolve(path: str) -> tuple[str, Path]:
     if any(p.startswith(".") for p in parts):
         raise WikiError(f"숨김 경로는 쓸 수 없습니다: {path}")
     return "/".join(parts), full
+
+
+def readonly_patterns() -> list[str]:
+    """`wiki/.readonly`의 glob 목록(한 줄에 하나, `#` 주석). 학습자가 고칠 수 없는 문서."""
+    if not READONLY_FILE.exists():
+        return []
+    lines = (l.strip() for l in READONLY_FILE.read_text(encoding="utf-8").splitlines())
+    return [_nfc(l) for l in lines if l and not l.startswith("#")]
+
+
+def is_readonly(rel: str) -> bool:
+    rel = _nfc(rel)
+    # macOS 기본 볼륨은 대소문자를 구분하지 않으므로 casefold로 비교한다.
+    rel = rel.casefold()
+    return any(fnmatch.fnmatchcase(rel, pat.casefold()) for pat in readonly_patterns())
 
 
 def _all_files() -> dict[str, Path]:
@@ -346,7 +362,7 @@ WIKI_READ_TOOLS = [t for t in WIKI_TOOLS if t["function"]["name"] in READ_TOOL_N
 
 
 def run_read_tool(name: str, arguments: dict | str) -> str:
-    """읽기 전용 도구만 실행한다. 통화 중 상담원에게 쓰기 권한은 주지 않는다."""
+    """읽기 전용 도구만 실행한다. 통화 중 발신자에게 쓰기 권한은 주지 않는다."""
     if name not in READ_TOOL_NAMES:
         return f"오류: 쓸 수 없는 도구: {name}"
     return run_tool(name, arguments)
@@ -395,7 +411,7 @@ def _content(args) -> str:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="상담원 위키 (./wiki) 관리와 검색")
+    p = argparse.ArgumentParser(description="발신자 위키 (./wiki) 관리와 검색")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="문서 목록")
     sub.add_parser("reindex", help="임베딩 인덱스를 처음부터 다시 만든다")

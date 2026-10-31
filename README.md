@@ -1,10 +1,23 @@
 # auto-prompt-learning
 
-[Nemotron-Personas-Korea](https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea)에서 페르소나 한 명을 뽑아 수신자로 만들고, 텔레마케터(발신자)가 상품 판매 전화를 거는 상황을 litellm으로 텍스트 시뮬레이션한다. 통화 기록은 JSON으로 저장된다.
+[Nemotron-Personas-Korea](https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea)에서 페르소나 한 명을 뽑아 수신자로 만들고, 발신자 에이전트가 전화를 거는 상황을 litellm으로 텍스트 시뮬레이션한다. 환경(텔레마케팅, 설문, 안내 전화 등)은 `prompt/system.md`와 `wiki/`로 정하며, 기본 예시는 텔레마케팅이다. 통화 기록은 JSON으로 저장된다.
 
-- 발신자는 페르소나 없이 `prompt/system.md`를 시스템 프롬프트로 쓰고, `--purpose`로 준 판매 상품을 안다. 수신자는 모르는 번호로 전화를 받는다.
+- 발신자는 페르소나 없이 `prompt/system.md`를 시스템 프롬프트로 쓰고, `--purpose`로 준 통화 목적을 안다. 수신자는 모르는 번호로 전화를 받는다.
 - 통화 전에 발신자가 계획을 한 번 세우고(`--plan-max-tokens`, 기본 8192), 그 계획이 시스템 프롬프트의 `[Plan]`으로 붙어 통화 내내 참고된다. 수신자 정보는 주지 않는다.
 - 수신자가 먼저 고정 대사 "여보세요?"로 받고(모델 호출 없음), 이후 번갈아 말한다. 한쪽이 `end_call` 도구(tool calling)를 호출하면 통화가 끝난다.
+
+## 환경 구성
+
+통화 환경은 아래 네 가지로만 정해진다. 코드에는 환경별 문구가 없다.
+
+| 요소 | 역할 |
+|---|---|
+| `prompt/system.md` | 발신자의 역할과 행동 원칙 |
+| `wiki/` | 발신자가 참고하는 지식(상품 정보, 응대 요령, 설문 지침 등) |
+| `wiki/.readonly` | 학습자가 고칠 수 없는 문서 glob |
+| `--purpose` | 이번 통화의 목적 |
+
+예를 들어 구청 설문 조사로 바꾸려면 `system.md`를 "구청 설문 조사원. 처음에 소속과 이름을 밝히고 [Goal]의 설문을 진행한다…"로 고치고, `wiki/`에 설문 문항 문서를 두고, `--purpose "주민 만족도 설문"`으로 실행한다. 변하지 않는 것은 전화 통화, 발신자가 페르소나에게 모르는 번호로 거는 방향, 수신자의 "여보세요?", 한국어 음성 채널이다.
 
 ## 준비
 
@@ -40,7 +53,7 @@ uv run main.py --purpose "월 9,900원 실손보험 가입 권유" --seed 1
 
 | 옵션 | 설명 |
 |---|---|
-| `--purpose` | (필수) 판매할 상품 |
+| `--purpose` | (필수) 발신자의 통화 목적 |
 | `--caller-prompt` | 발신자 시스템 프롬프트 파일 (기본: 저장소의 `prompt/system.md`) |
 | `--callee-uuid` | 수신자 페르소나를 지정. 없으면 무작위 |
 | `--seed` | 페르소나 샘플링 시드 |
@@ -49,7 +62,7 @@ uv run main.py --purpose "월 9,900원 실손보험 가입 권유" --seed 1
 | `--model`, `--api-base` | litellm 모델 문자열과 엔드포인트 |
 | `--temperature`, `--max-tokens` | 샘플링 설정 |
 | `--plan-max-tokens` | 통화 전 계획 생성의 max_tokens (기본 8192, 0이면 계획 생략) |
-| `--no-wiki` | 상담원의 위키 도구 사용을 끈다 |
+| `--no-wiki` | 발신자의 위키 도구 사용을 끈다 |
 | `--out` | 기록 저장 폴더 (기본 `agent_workspace/conversation_history`) |
 
 호스팅 모델을 쓰려면 `--api-base ""`로 `api_base`와 MLX 전용 옵션을 끈다.
@@ -80,12 +93,12 @@ turns: [{turn, speaker, name, text, latency_s, finish_reason, usage, reasoning}]
 | `prompts.py` | 전화 규칙과 프롬프트 조립 (발신자 본문은 `prompt/system.md`) |
 | `agent.py` | `LLMConfig`, `PhoneAgent` (litellm 호출, 출력 정리) |
 | `phone_call.py` | 통화 루프, 종료 판정, 기록 저장 |
-| `wiki_store.py` | 상담원 위키(`wiki/`) CRUD, 임베딩·파일명 검색, 에이전트 도구 스키마, CLI |
+| `wiki_store.py` | 발신자 위키(`wiki/`) CRUD, 임베딩·파일명 검색, 에이전트 도구 스키마, CLI |
 | `main.py` | CLI |
 
 ## 위키
 
-`wiki/`에 마크다운 문서를 두면 상담원이 참고할 지식 베이스가 된다(하위 폴더 가능). 통화 중 상담원(발신자)은 `wiki_read`, `wiki_search`, `wiki_find` 도구를 쓸 수 있다(수신자는 제외). 위키에 문서가 있으면 통화 전에 인덱스를 맞추고 모델을 미리 올리며, 통화 전 계획 단계에서도 같은 도구로 조회할 수 있다. 계획 한 번, 발화 한 번마다 도구는 최대 3번 부른다. `--no-wiki`로 끈다. 쓰기 도구(`wiki_create/update/delete`)는 `WIKI_TOOLS`와 `run_tool`에 있지만 상담원에게는 주지 않는다. 조회 내역은 턴 기록과 `caller.plan`의 `wiki`에 남는다.
+`wiki/`에 마크다운 문서를 두면 발신자가 참고할 지식 베이스가 된다(하위 폴더 가능). 통화 중 발신자는 `wiki_read`, `wiki_search`, `wiki_find` 도구를 쓸 수 있다(수신자는 제외). 위키에 문서가 있으면 통화 전에 인덱스를 맞추고 모델을 미리 올리며, 통화 전 계획 단계에서도 같은 도구로 조회할 수 있다. 계획 한 번, 발화 한 번마다 도구는 최대 3번 부른다. `--no-wiki`로 끈다. 쓰기 도구(`wiki_create/update/delete`)는 `WIKI_TOOLS`와 `run_tool`에 있지만 발신자에게는 주지 않는다. 조회 내역은 턴 기록과 `caller.plan`의 `wiki`에 남는다.
 
 - 임베딩 검색은 `mlx-community/embeddinggemma-2-bf16`(첫 사용 시 약 1.5GB 다운로드)을 쓴다. 문서를 헤딩 단위 청크로 나눠 `wiki/.index/`(git 제외)에 저장하고, 검색 때마다 바뀐 파일만 다시 임베딩한다. 에디터로 직접 고쳐도 반영된다.
 - 파일명 검색은 모델 없이 부분일치, glob(`상품/*`), 오타 허용 매칭을 지원한다.
@@ -101,12 +114,12 @@ uv run wiki_store.py read|delete|list|reindex
 
 ## 학습
 
-통화 `--learn-every`(기본 20, 0이면 끔)건마다 상담원의 `prompt/system.md`와 `wiki/`를 자동으로 고친다. 같은 모델이 두 단계로 일한다.
+통화 `--learn-every`(기본 20, 0이면 끔)건마다 발신자의 `prompt/system.md`와 `wiki/`를 자동으로 고친다. 같은 모델이 두 단계로 일한다.
 
 1. 통화 직후 `review_call`이 짧은 평가(`점수: N` + 메모)를 만들어 기록의 `review`에 저장하고 `agent_workspace/learning/pending.jsonl`에 쌓는다. 여러 번에 나눠 실행해도 이어서 센다.
 2. 쌓인 리뷰가 N건이 되면 `learner.learn`이 리뷰·현재 프롬프트·위키 목록을 보고 위키 도구와 `prompt_write`로 고친다. 다음 통화부터 새 프롬프트를 쓴다.
 
-system.md는 20자 미만이거나 300자를 넘으면 거절된다. 리뷰가 비었거나 max_tokens에서 잘리면 대기열에 넣지 않는다. 위키 `상품/` 문서는 학습자가 고칠 수 없다. 회차마다 `agent_workspace/learning/round_NNN/`에 `system_before/after.md`, `wiki_before/after/`, `reviews.json`(평균 점수), `learner.json`을 남기므로 `*_before`를 복사해 되돌릴 수 있다. `uv run learner.py [--now]`로 대기열을 보거나 바로 학습한다. 기록에는 `review: {score, notes, latency_s}`가 추가된다.
+system.md는 20자 미만이거나 300자를 넘으면 거절된다. 리뷰가 비었거나 max_tokens에서 잘리면 대기열에 넣지 않는다. `wiki/.readonly`(한 줄에 glob 하나, `#` 주석)에 적힌 문서는 학습자가 고칠 수 없다(예: `상품/*`). 회차마다 `agent_workspace/learning/round_NNN/`에 `system_before/after.md`, `wiki_before/after/`, `reviews.json`(평균 점수), `learner.json`을 남기므로 `*_before`를 복사해 되돌릴 수 있다. `uv run learner.py [--now]`로 대기열을 보거나 바로 학습한다. 기록에는 `review: {score, notes, latency_s}`가 추가된다.
 
 ## 알려진 한계
 

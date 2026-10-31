@@ -41,7 +41,7 @@ def _is_repeat(prev: str, text: str) -> bool:
 
 
 def _wiki_ready() -> bool:
-    """위키에 문서가 있고 인덱스·모델을 미리 올릴 수 있을 때만 상담원에게 위키 도구를 준다."""
+    """위키에 문서가 있고 인덱스·모델을 미리 올릴 수 있을 때만 발신자에게 위키 도구를 준다."""
     if not wiki_store.list_pages():
         return False
     try:
@@ -61,7 +61,7 @@ def build_agents(
     caller = PhoneAgent(
         role="caller",
         persona=None,
-        name="상담원",
+        name="발신자",
         system_prompt=caller_prompt(caller_profile, purpose),
         llm=llm,
         tools=[END_CALL_TOOL, *(wiki_store.WIKI_READ_TOOLS if use_wiki else [])],

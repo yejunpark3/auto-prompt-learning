@@ -17,12 +17,11 @@ LEARN_DIR = Path("agent_workspace/learning")
 PENDING = LEARN_DIR / "pending.jsonl"
 PROMPT_MAX_CHARS = 300
 PROMPT_MIN_CHARS = 20
-PROTECTED_PREFIX = "상품/"
 WRITE_TOOLS = {"wiki_create", "wiki_update", "wiki_delete"}
 
 PROMPT_WRITE_TOOL = wiki_store._tool(
     "prompt_write",
-    f"상담원 system.md 전체를 새로 쓴다 (최대 {PROMPT_MAX_CHARS}자)",
+    f"발신자 system.md 전체를 새로 쓴다 (최대 {PROMPT_MAX_CHARS}자)",
     {"content": {"type": "string"}},
     ["content"],
 )
@@ -39,7 +38,8 @@ def review_call(record: dict, llm: LLMConfig) -> dict | None:
     max_tokens에서 잘렸거나 메모가 비면 None (대기열에 넣지 않는다).
     """
     agent = PhoneAgent("reviewer", None, "리뷰어", "통화 기록을 평가한다.", llm)
-    request = REVIEW_REQUEST.format(end_reason=record["end_reason"], transcript=_transcript(record))
+    request = REVIEW_REQUEST.format(end_reason=record["end_reason"], transcript=_transcript(record),
+                                    purpose=record.get("purpose", ""))
     raw, _, meta = agent._complete(
         messages=[{"role": "system", "content": agent.system_prompt},
                   {"role": "user", "content": request}],
@@ -60,7 +60,7 @@ def review_call(record: dict, llm: LLMConfig) -> dict | None:
 def enqueue(record: dict, path: Path) -> int:
     LEARN_DIR.mkdir(parents=True, exist_ok=True)
     review = record.get("review") or {}
-    row = {"call_id": record["call_id"], "path": str(path), "end_reason": record["end_reason"],
+    row = {"call_id": record["call_id"], "path": str(path), "end_reason": record["end_reason"], "purpose": record.get("purpose", ""),
            "score": review.get("score"), "notes": review.get("notes", "")}
     with PENDING.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -96,14 +96,16 @@ def _tool_runner(prompt_path: str):
                 rel, _ = wiki_store._resolve(a.get("path", ""))
             except (ValueError, TypeError, AttributeError, wiki_store.WikiError) as e:
                 return f"오류: {e}"
-            if rel.startswith(PROTECTED_PREFIX):
-                return f"오류: {PROTECTED_PREFIX} 문서는 고칠 수 없습니다"
+            if wiki_store.is_readonly(rel):
+                return f"오류: {rel}은 고칠 수 없는 문서입니다"
         return wiki_store.run_tool(name, arguments)
     return run
 
 
 def learn(llm: LLMConfig, prompt_path: str = SYSTEM_PROMPT_PATH) -> Path:
     rows = _pending()
+    if not wiki_store.READONLY_FILE.exists():
+        print(f"[경고] {wiki_store.READONLY_FILE}이 없어 모든 위키 문서를 고칠 수 있습니다", flush=True)
     n = len(list(LEARN_DIR.glob("round_*"))) + 1
     out = LEARN_DIR / f"round_{n:03d}"
     result: dict = {}
@@ -117,12 +119,13 @@ def learn(llm: LLMConfig, prompt_path: str = SYSTEM_PROMPT_PATH) -> Path:
             json.dumps({"avg_score": avg, "reviews": rows}, ensure_ascii=False, indent=2),
             encoding="utf-8")
 
-        reviews = "\n\n".join(f"- ({r['end_reason']}, 점수 {r['score']}) {r['notes']}" for r in rows)
+        reviews = "\n\n".join(f"- (목적: {r.get('purpose', '')}, {r['end_reason']}, 점수 {r['score']}) {r['notes']}" for r in rows)
         request = LEARN_REQUEST.format(
             n=len(rows), reviews=reviews, prompt=load_caller_profile(prompt_path),
-            pages="\n".join(wiki_store.list_pages()) or "(없음)", max_chars=PROMPT_MAX_CHARS)
+            pages="\n".join(wiki_store.list_pages()) or "(없음)", max_chars=PROMPT_MAX_CHARS,
+            readonly="\n".join(wiki_store.readonly_patterns()) or "(없음)")
         learner = PhoneAgent(
-            "learner", None, "학습자", "텔레마케터의 프롬프트와 위키를 개선한다.", llm,
+            "learner", None, "학습자", "전화 발신자의 프롬프트와 위키를 개선한다.", llm,
             tools=[*wiki_store.WIKI_TOOLS, PROMPT_WRITE_TOOL], tool_runner=_tool_runner(prompt_path))
         raw, _, meta, lookups = learner._generate(
             messages=[{"role": "system", "content": learner.system_prompt},

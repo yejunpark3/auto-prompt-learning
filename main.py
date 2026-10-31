@@ -12,7 +12,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Nemotron-Personas-Korea 페르소나 두 명의 전화통화 시뮬레이션"
     )
-    p.add_argument("--purpose", required=True, help="판매할 상품 (발신자의 목적)")
+    p.add_argument("--purpose", required=True, help="발신자의 통화 목적")
     p.add_argument("--caller-prompt", default=SYSTEM_PROMPT_PATH, help="발신자 시스템 프롬프트 파일")
     p.add_argument("--callee-uuid", help="수신자 페르소나 uuid (없으면 무작위)")
     p.add_argument("--seed", type=int, help="페르소나 샘플링 시드")
@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
         default=LLMConfig.plan_max_tokens,
         help="통화 전 계획 생성의 max_tokens (0이면 계획 생략)",
     )
-    p.add_argument("--no-wiki", action="store_true", help="상담원에게 위키 도구(읽기·검색)를 주지 않는다")
+    p.add_argument("--no-wiki", action="store_true", help="발신자에게 위키 도구(읽기·검색)를 주지 않는다")
     p.add_argument(
         "--learn-every", type=int, default=20,
         help="통화 N건마다 리뷰를 모아 system.md와 위키를 고친다 (0이면 끔)",
@@ -65,7 +65,7 @@ def main() -> None:
         )
 
         print(f"\n=== 통화 {i + 1}/{args.n} ===")
-        print(f"발신자: 상담원 ({args.caller_prompt})")
+        print(f"발신자: ({args.caller_prompt})")
         print(f"수신자: {personas.summarize(callee_p)}")
         print(f"목적: {args.purpose}\n")
 
