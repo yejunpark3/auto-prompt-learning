@@ -36,3 +36,18 @@ def with_plan(system_prompt: str, plan: str) -> str:
 
 def load_caller_profile(path: str = SYSTEM_PROMPT_PATH) -> str:
     return Path(path).read_text(encoding="utf-8").strip()
+
+
+REVIEW_REQUEST = (
+    "아래는 텔레마케터(발신)가 건 판매 전화 기록이다. 종료 사유: {end_reason}\n\n{transcript}\n\n"
+    "첫 줄에 `점수: N`(1~5, 판매 시도의 자연스러움·정확성·예의), "
+    "이어서 잘한 점, 문제점, 근거 없이 지어낸 정보를 3~5줄로 써라."
+)
+
+LEARN_REQUEST = (
+    "너는 텔레마케터의 시스템 프롬프트와 위키를 개선한다. 아래는 최근 {n}통화의 리뷰이다.\n\n"
+    "{reviews}\n\n[현재 system.md]\n{prompt}\n\n[위키 문서]\n{pages}\n\n"
+    "반복되는 문제를 골라 고쳐라. 행동 원칙은 prompt_write로 system.md를 짧게(최대 {max_chars}자) 다시 쓰고, "
+    "상황별 요령·FAQ는 위키 도구로 추가·수정하라. 위키 `상품/`은 고칠 수 없다. "
+    "가격·조건·전화번호 같은 사실은 지어내지 마라. 끝나면 바꾼 내용을 한두 줄로 요약하라."
+)

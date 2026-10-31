@@ -1,6 +1,7 @@
 import argparse
 import random
 
+import learner
 import personas
 from agent import DEFAULT_API_BASE, DEFAULT_MODEL, LLMConfig
 from prompts import SYSTEM_PROMPT_PATH, load_caller_profile
@@ -32,6 +33,10 @@ def parse_args() -> argparse.Namespace:
         help="통화 전 계획 생성의 max_tokens (0이면 계획 생략)",
     )
     p.add_argument("--no-wiki", action="store_true", help="상담원에게 위키 도구(읽기·검색)를 주지 않는다")
+    p.add_argument(
+        "--learn-every", type=int, default=20,
+        help="통화 N건마다 리뷰를 모아 system.md와 위키를 고친다 (0이면 끔)",
+    )
     p.add_argument("--out", default=DEFAULT_OUT_DIR)
     return p.parse_args()
 
@@ -68,8 +73,24 @@ def main() -> None:
             caller_profile, callee_p, args.purpose, llm, wiki=not args.no_wiki
         )
         record = simulate_call(caller, callee, args.purpose, max_turns=args.max_turns)
+        if args.learn_every:
+            try:
+                record["review"] = learner.review_call(record, llm)
+                if record["review"] is None:
+                    print("[경고] 리뷰가 비었거나 잘려 학습 대기열에 넣지 않습니다", flush=True)
+            except Exception as e:
+                print(f"[경고] 통화 리뷰 실패: {type(e).__name__}: {e}", flush=True)
         path = save_record(record, args.out)
         print(f"\n종료: {record['end_reason']} ({record['num_turns']}턴) → {path}")
+
+        if args.learn_every and (record.get("review") or {}).get("notes"):
+            try:
+                learner.enqueue(record, path)
+                if round_dir := learner.maybe_learn(llm, args.caller_prompt, args.learn_every):
+                    print(f"[학습] {round_dir}", flush=True)
+                    caller_profile = load_caller_profile(args.caller_prompt)
+            except Exception as e:
+                print(f"[경고] 학습 실패: {type(e).__name__}: {e}", flush=True)
 
 
 if __name__ == "__main__":

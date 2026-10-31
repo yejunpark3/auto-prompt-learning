@@ -38,6 +38,8 @@ _NON_SPEECH_RE = re.compile(
 )
 # 한 발화 안에서 도구를 부르고 결과를 받아 다시 생성하는 최대 횟수.
 MAX_TOOL_ROUNDS = 3
+# 학습자는 위키를 읽고 고치느라 도구를 더 많이 부른다.
+LEARN_TOOL_ROUNDS = 8
 MAX_TOOL_RESULT_CHARS = 3000
 _QUOTES = "\"'“”‘’「」"
 
@@ -195,7 +197,8 @@ class PhoneAgent:
         return lookups
 
     def _generate(
-        self, messages=None, max_tokens=None, tools=None, final_tools=None
+        self, messages=None, max_tokens=None, tools=None, final_tools=None,
+        max_rounds=MAX_TOOL_ROUNDS,
     ) -> tuple[str, bool, dict, list[dict]]:
         """도구 호출을 처리하며 한 번 생성한다. 마지막 라운드는 final_tools만 열어 반드시 글로 답하게 한다.
 
@@ -208,8 +211,8 @@ class PhoneAgent:
             final_tools = [t for t in self.tools or [] if t["function"]["name"] == END_CALL_NAME]
         has_lookup = any(t["function"]["name"] != END_CALL_NAME for t in tools or [])
         lookups: list[dict] = []
-        for round_ in range(MAX_TOOL_ROUNDS + 1):
-            last = round_ == MAX_TOOL_ROUNDS or not (self.tool_runner and has_lookup)
+        for round_ in range(max_rounds + 1):
+            last = round_ == max_rounds or not (self.tool_runner and has_lookup)
             raw, ended, meta = self._complete(
                 messages=messages,
                 max_tokens=max_tokens,

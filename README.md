@@ -99,6 +99,15 @@ uv run wiki_store.py update 상품/실손보험 --append < note.md
 uv run wiki_store.py read|delete|list|reindex
 ```
 
+## 학습
+
+통화 `--learn-every`(기본 20, 0이면 끔)건마다 상담원의 `prompt/system.md`와 `wiki/`를 자동으로 고친다. 같은 모델이 두 단계로 일한다.
+
+1. 통화 직후 `review_call`이 짧은 평가(`점수: N` + 메모)를 만들어 기록의 `review`에 저장하고 `agent_workspace/learning/pending.jsonl`에 쌓는다. 여러 번에 나눠 실행해도 이어서 센다.
+2. 쌓인 리뷰가 N건이 되면 `learner.learn`이 리뷰·현재 프롬프트·위키 목록을 보고 위키 도구와 `prompt_write`로 고친다. 다음 통화부터 새 프롬프트를 쓴다.
+
+system.md는 20자 미만이거나 300자를 넘으면 거절된다. 리뷰가 비었거나 max_tokens에서 잘리면 대기열에 넣지 않는다. 위키 `상품/` 문서는 학습자가 고칠 수 없다. 회차마다 `agent_workspace/learning/round_NNN/`에 `system_before/after.md`, `wiki_before/after/`, `reviews.json`(평균 점수), `learner.json`을 남기므로 `*_before`를 복사해 되돌릴 수 있다. `uv run learner.py [--now]`로 대기열을 보거나 바로 학습한다. 기록에는 `review: {score, notes, latency_s}`가 추가된다.
+
 ## 알려진 한계
 
 - 4B 4비트 모델은 맥락을 놓치거나 상대의 말투와 이름을 따라 하는 일이 잦다. 9B가 훨씬 낫다.
