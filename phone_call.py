@@ -44,7 +44,7 @@ def build_agents(
         persona=caller_persona,
         name=caller_name,
         system_prompt=caller_prompt(
-            personas.render_profile(caller_persona), caller_name, callee_name, purpose
+            personas.render_profile(caller_persona), caller_name, purpose
         ),
         llm=llm,
         hangup_token=HANGUP_TOKEN,

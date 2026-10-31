@@ -20,9 +20,6 @@ CALLER_TEMPLATE = """\
 {profile}
 
 {rules}
-[상황]
-지금 {callee_name} 씨에게 전화를 걸었다. 당신의 이름은 {caller_name}, 상대의 이름은 {callee_name}이다. 두 이름을 헷갈리지 않는다.
-상대가 전화를 받으면 {callee_name} 씨가 맞는지 확인하고, 당신이 누구인지 밝힌 뒤, 통화 목적을 바로 말한다.
 
 통화 목적: {purpose}
 
@@ -45,14 +42,11 @@ CALLEE_TEMPLATE = """\
 """
 
 
-def caller_prompt(
-    profile: str, caller_name: str, callee_name: str, purpose: str
-) -> str:
+def caller_prompt(profile: str, caller_name: str, purpose: str) -> str:
     return CALLER_TEMPLATE.format(
         profile=profile,
         rules=PHONE_RULES,
         caller_name=caller_name,
-        callee_name=callee_name,
         purpose=purpose,
     )
 
