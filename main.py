@@ -2,6 +2,7 @@ import argparse
 import random
 
 import learner
+import reviewer
 import personas
 from agent import DEFAULT_API_BASE, DEFAULT_MODEL, LLMConfig
 from prompts import SYSTEM_PROMPT_PATH, load_caller_profile
@@ -75,7 +76,7 @@ def main() -> None:
         record = simulate_call(caller, callee, args.purpose, max_turns=args.max_turns)
         if args.learn_every:
             try:
-                record["review"] = learner.review_call(record, llm)
+                record["review"] = reviewer.review_call(record, llm)
                 if record["review"] is None:
                     print("[경고] 리뷰가 비었거나 잘려 학습 대기열에 넣지 않습니다", flush=True)
             except Exception as e:

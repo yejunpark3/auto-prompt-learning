@@ -8,7 +8,6 @@ import wiki_store
 from agent import LEARN_TOOL_ROUNDS, LLMConfig, PhoneAgent, _strip_think
 from prompts import (
     LEARN_REQUEST,
-    REVIEW_REQUEST,
     SYSTEM_PROMPT_PATH,
     load_caller_profile,
 )
@@ -27,41 +26,11 @@ PROMPT_WRITE_TOOL = wiki_store._tool(
 )
 
 
-def _transcript(record: dict) -> str:
-    label = {"caller": "발신", "callee": "수신"}
-    return "\n".join(f"[{label[t['speaker']]}] {t['text']}" for t in record["turns"] if t["text"])
-
-
-def review_call(record: dict, llm: LLMConfig) -> dict | None:
-    """통화 한 건을 짧게 평가한다. 점수를 못 읽으면 score는 None.
-
-    max_tokens에서 잘렸거나 메모가 비면 None (대기열에 넣지 않는다).
-    """
-    agent = PhoneAgent("reviewer", None, "리뷰어", "통화 기록을 평가한다.", llm)
-    request = REVIEW_REQUEST.format(end_reason=record["end_reason"], transcript=_transcript(record),
-                                    purpose=record.get("purpose", ""))
-    raw, _, meta = agent._complete(
-        messages=[{"role": "system", "content": agent.system_prompt},
-                  {"role": "user", "content": request}],
-        max_tokens=llm.plan_max_tokens,
-        tools=[],
-    )
-    notes = _strip_think(raw).strip()
-    if not notes or meta["finish_reason"] == "length":
-        return None
-    score = None
-    for ch in notes.split("\n", 1)[0]:
-        if ch in "12345":
-            score = int(ch)
-            break
-    return {"score": score, "notes": notes, "latency_s": meta["latency_s"]}
-
-
 def enqueue(record: dict, path: Path) -> int:
     LEARN_DIR.mkdir(parents=True, exist_ok=True)
     review = record.get("review") or {}
     row = {"call_id": record["call_id"], "path": str(path), "end_reason": record["end_reason"], "purpose": record.get("purpose", ""),
-           "score": review.get("score"), "notes": review.get("notes", "")}
+           "spam": review.get("spam"), "achieved": review.get("achieved"), "notes": review.get("notes", "")}
     with PENDING.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
     return len(_pending())
@@ -70,7 +39,16 @@ def enqueue(record: dict, path: Path) -> int:
 def _pending() -> list[dict]:
     if not PENDING.exists():
         return []
-    return [json.loads(l) for l in PENDING.read_text(encoding="utf-8").splitlines() if l.strip()]
+    rows = [json.loads(l) for l in PENDING.read_text(encoding="utf-8").splitlines() if l.strip()]
+    kept = [r for r in rows if "achieved" in r and "spam" in r]
+    if len(kept) < len(rows):  # 점수(score) 형식의 옛 행은 신고·달성 여부를 알 수 없다
+        print(f"[경고] 옛 형식 대기열 {len(rows) - len(kept)}건을 버립니다", flush=True)
+        PENDING.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in kept), encoding="utf-8")
+    return kept
+
+
+def _rate(rows: list[dict], key: str) -> float | None:
+    return round(sum(bool(r.get(key)) for r in rows) / len(rows), 2) if rows else None
 
 
 def _copy_wiki(dst: Path) -> None:
@@ -113,15 +91,14 @@ def learn(llm: LLMConfig, prompt_path: str = SYSTEM_PROMPT_PATH) -> Path:
         out.mkdir(parents=True)
         shutil.copy(prompt_path, out / "system_before.md")
         _copy_wiki(out / "wiki_before")
-        scores = [r["score"] for r in rows if r["score"] is not None]
-        avg = round(sum(scores) / len(scores), 2) if scores else None
+        rates = {"achieved_rate": _rate(rows, "achieved"), "spam_rate": _rate(rows, "spam")}
         (out / "reviews.json").write_text(
-            json.dumps({"avg_score": avg, "reviews": rows}, ensure_ascii=False, indent=2),
+            json.dumps({**rates, "reviews": rows}, ensure_ascii=False, indent=2),
             encoding="utf-8")
 
-        reviews = "\n\n".join(f"- (목적: {r.get('purpose', '')}, {r['end_reason']}, 점수 {r['score']}) {r['notes']}" for r in rows)
+        reviews = "\n\n".join(f"- (목적: {r.get('purpose', '')}, {r['end_reason']}, 달성 {'예' if r['achieved'] else '아니오'}, 신고 {'예' if r['spam'] else '아니오'}) {r['notes']}" for r in rows)
         request = LEARN_REQUEST.format(
-            n=len(rows), reviews=reviews, prompt=load_caller_profile(prompt_path),
+            n=len(rows), achieved_rate=rates["achieved_rate"], spam_rate=rates["spam_rate"], reviews=reviews, prompt=load_caller_profile(prompt_path),
             pages="\n".join(wiki_store.list_pages()) or "(없음)", max_chars=PROMPT_MAX_CHARS,
             readonly="\n".join(wiki_store.readonly_patterns()) or "(없음)")
         learner = PhoneAgent(
