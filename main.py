@@ -25,6 +25,12 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--temperature", type=float, default=LLMConfig.temperature)
     p.add_argument("--max-tokens", type=int, default=LLMConfig.max_tokens)
+    p.add_argument(
+        "--plan-max-tokens",
+        type=int,
+        default=LLMConfig.plan_max_tokens,
+        help="통화 전 계획 생성의 max_tokens (0이면 계획 생략)",
+    )
     p.add_argument("--out", default=DEFAULT_OUT_DIR)
     return p.parse_args()
 
@@ -41,6 +47,7 @@ def main() -> None:
         api_base=args.api_base or None,
         temperature=args.temperature,
         max_tokens=args.max_tokens,
+        plan_max_tokens=args.plan_max_tokens,
     )
 
     for i in range(args.n):

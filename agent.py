@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field
 
 import litellm
 
-from prompts import END_CALL_NAME
+from prompts import END_CALL_NAME, with_plan
 
 # 로컬에서 `optiq serve`로 띄워 둔 9B 서버.
 DEFAULT_MODEL = "openai/mlx-community/Qwen3.5-9B-OptiQ-4bit:think"
@@ -13,10 +13,11 @@ DEFAULT_API_BASE = "http://127.0.0.1:8080/v1"
 LOCAL_API_KEY = "sk-optiq-local"
 
 # Qwen3.5 thinking 모드 권장 샘플링 (temperature 1.0, top_p 0.95, top_k 20,
-# presence_penalty 1.5). mlx_lm.server는 generation_config.json을 읽지 않으므로 요청마다 넘긴다.
+# presence_penalty 1.5). presence_penalty는 1.5에서 외국어 단어가 섞여 0.5로 낮췄다.
+# mlx_lm.server는 generation_config.json을 읽지 않으므로 요청마다 넘긴다.
 _MLX_EXTRA_BODY = {
     "top_k": 20,
-    "presence_penalty": 1.5,
+    "presence_penalty": 0.5,
 }
 
 # max_tokens로 잘려 닫는 태그가 없는 <think> 블록도 끝까지 지운다.
@@ -46,6 +47,8 @@ class LLMConfig:
     top_p: float = 0.95
     # thinking 토큰도 포함되는 한도라 곧 think 최대 길이다. 넘으면 대사가 비어 한 번 재시도한다.
     max_tokens: int = 2048
+    # 통화 전 계획 생성의 한도(thinking 포함). 0이면 계획 단계를 건너뛴다.
+    plan_max_tokens: int = 8192
     extra_body: dict | None = None
 
     def __post_init__(self):
@@ -93,25 +96,29 @@ class PhoneAgent:
     def __post_init__(self):
         self.messages = [{"role": "system", "content": self.system_prompt}]
 
-    def _complete(self) -> tuple[str, bool, dict]:
+    def _complete(
+        self, messages=None, max_tokens=None, tools="default"
+    ) -> tuple[str, bool, dict]:
         kwargs = dict(
             model=self.llm.model,
-            messages=self.messages,
+            messages=self.messages if messages is None else messages,
             api_base=self.llm.api_base,
             api_key=self.llm.api_key,
             temperature=self.llm.temperature,
             top_p=self.llm.top_p,
-            max_tokens=self.llm.max_tokens,
+            max_tokens=max_tokens or self.llm.max_tokens,
         )
         if self.llm.extra_body:
             kwargs["extra_body"] = self.llm.extra_body
-        if self.tools:
-            kwargs["tools"] = self.tools
+        tools = self.tools if tools == "default" else tools
+        if tools:
+            kwargs["tools"] = tools
         t0 = time.perf_counter()
         resp = litellm.completion(**kwargs)
         message = resp.choices[0].message
         meta = {
             "latency_s": round(time.perf_counter() - t0, 2),
+            "finish_reason": resp.choices[0].finish_reason,
             "usage": resp.usage.model_dump() if resp.usage else None,
             "reasoning": getattr(message, "reasoning_content", None)
             or getattr(message, "reasoning", None),
@@ -126,6 +133,26 @@ class PhoneAgent:
             for block in _TOOL_CALL_RE.findall(_strip_think(content))
         ) or bool(_END_TAG_RE.search(_strip_think(content)))
         return content, ended, meta
+
+    def plan(self, request: str) -> dict | None:
+        """통화 전에 계획을 한 번 세워 시스템 프롬프트의 [Plan]에 붙인다.
+
+        비었거나 max_tokens에서 잘린 계획은 붙이지 않고 None을 돌려준다.
+        """
+        raw, _, meta = self._complete(
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": request},
+            ],
+            max_tokens=self.llm.plan_max_tokens,
+            tools=None,
+        )
+        text = _strip_think(raw).strip()
+        if not text or meta["finish_reason"] == "length":
+            return None
+        self.system_prompt = with_plan(self.system_prompt, text)
+        self.messages[0]["content"] = self.system_prompt
+        return {"text": text, **meta}
 
     def respond(self, incoming: str) -> tuple[str, bool, dict]:
         self.messages.append({"role": "user", "content": incoming})

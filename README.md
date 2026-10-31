@@ -3,7 +3,8 @@
 [Nemotron-Personas-Korea](https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea)에서 페르소나 한 명을 뽑아 수신자로 만들고, 텔레마케터(발신자)가 상품 판매 전화를 거는 상황을 litellm으로 텍스트 시뮬레이션한다. 통화 기록은 JSON으로 저장된다.
 
 - 발신자는 페르소나 없이 `prompt/system.md`를 시스템 프롬프트로 쓰고, `--purpose`로 준 판매 상품을 안다. 수신자는 모르는 번호로 전화를 받는다.
-- 수신자가 먼저 "여보세요"로 받고, 이후 번갈아 말한다. 한쪽이 `end_call` 도구(tool calling)를 호출하면 통화가 끝난다.
+- 통화 전에 발신자가 계획을 한 번 세우고(`--plan-max-tokens`, 기본 8192), 그 계획이 시스템 프롬프트의 `[Plan]`으로 붙어 통화 내내 참고된다. 수신자 정보는 주지 않는다.
+- 수신자가 먼저 고정 대사 "여보세요?"로 받고(모델 호출 없음), 이후 번갈아 말한다. 한쪽이 `end_call` 도구(tool calling)를 호출하면 통화가 끝난다.
 
 ## 준비
 
@@ -17,7 +18,7 @@ uv sync
 
 기본 설정은 `optiq serve`로 띄운 로컬 서버(`http://127.0.0.1:8080/v1`)의 `mlx-community/Qwen3.5-9B-OptiQ-4bit:think`(thinking 켠 변형)를 쓴다. thinking 토큰도 `max_tokens`에 포함되므로 기본값을 2048로 두어 think 길이의 상한으로 쓴다(넘으면 대사가 비어 한 번 재시도한다. `--max-tokens`로 조절). `optiq serve`는 `sk-optiq-` 접두사의 키를 요구해서 자리표시 키 `sk-optiq-local`을 보낸다.
 
-로컬 서버(`api_base`를 줄 때)에는 요청마다 `top_k: 20`, `presence_penalty: 1.5`도 함께 보낸다(기본 `temperature 1.0`, `top_p 0.95`는 Qwen3.5 thinking 권장값). `optiq serve`는 이 필드를 받아들이지만 실제로 반영하는지는 확인하지 않았다.
+로컬 서버(`api_base`를 줄 때)에는 요청마다 `top_k: 20`, `presence_penalty: 0.5`도 함께 보낸다(기본 `temperature 1.0`, `top_p 0.95`는 Qwen3.5 thinking 권장값. 권장값 1.5에서는 외국어 단어가 섞여 0.5로 낮췄다). `optiq serve`는 이 필드를 받아들이지만 실제로 반영하는지는 확인하지 않았다.
 
 통화 종료에 tool calling을 쓴다. `mlx_lm.server`는 `tools`를 `tool_calls`로 파싱해 준다. 서버가 파싱하지 않고 content에 `<tool_call>` 블록을 남기면 그 블록에서 `end_call`을 찾고 발화에서는 지운다.
 
@@ -47,6 +48,7 @@ uv run main.py --purpose "월 9,900원 실손보험 가입 권유" --seed 1
 | `--max-turns` | 최대 턴 수 (기본 30) |
 | `--model`, `--api-base` | litellm 모델 문자열과 엔드포인트 |
 | `--temperature`, `--max-tokens` | 샘플링 설정 |
+| `--plan-max-tokens` | 통화 전 계획 생성의 max_tokens (기본 8192, 0이면 계획 생략) |
 | `--out` | 기록 저장 폴더 (기본 `agent_workspace/conversation_history`) |
 
 호스팅 모델을 쓰려면 `--api-base ""`로 `api_base`와 MLX 전용 옵션을 끈다.
@@ -61,10 +63,10 @@ uv run main.py --purpose "..." --model gemini/gemini-2.5-flash --api-base ""
 
 ```
 call_id, started_at, ended_at, purpose, end_reason, num_turns,
-llm: {model, api_base, temperature, top_p, max_tokens, extra_body},
-caller: {uuid: null, name, system_prompt, persona: null}
+llm: {model, api_base, temperature, top_p, max_tokens, plan_max_tokens, extra_body},
+caller: {uuid: null, name, system_prompt([Plan] 포함), persona: null, plan: {text, latency_s, finish_reason, usage, reasoning} | null (비었거나 max_tokens에서 잘리면 null)}
 callee: {uuid, name, system_prompt, persona(원본 26개 필드)},
-turns: [{turn, speaker, name, text, latency_s, usage, reasoning}]
+turns: [{turn, speaker, name, text, latency_s, finish_reason, usage, reasoning}]
 ```
 
 `end_reason`: `hangup_by_caller`, `hangup_by_callee`, `max_turns`, `repetition_loop`(같은 화자가 직전 발화를 되풀이), `empty_response`, `error`.

@@ -69,6 +69,14 @@ def summarize(persona: dict) -> str:
     )
 
 
+# 직업·특기를 길게 서술한 필드까지 다 넣으면 모델이 그 어휘(예: "데이터 분석")를 모든 답에
+# 되풀이한다. 일상 대화에 필요한 정체성 필드만 프롬프트에 넣는다.
+_PROFILE_FIELDS = (
+    "persona", "sex", "age", "marital_status", "family_type", "housing_type",
+    "education_level", "occupation", "district",
+)
+
+
 def render_profile(persona: dict) -> str:
-    data = {k: v for k, v in persona.items() if k != "uuid"}
+    data = {k: persona[k] for k in _PROFILE_FIELDS}
     return yaml.dump(data, allow_unicode=True, sort_keys=False)

@@ -8,7 +8,9 @@ from pathlib import Path
 import personas
 from agent import LLMConfig, PhoneAgent
 from prompts import (
+    CALLEE_GREETING,
     END_CALL_TOOL,
+    PLAN_REQUEST,
     RING_CUE,
     WRAP_UP_HINT,
     callee_prompt,
@@ -62,19 +64,48 @@ def print_turn(turn: dict) -> None:
     print(f"[{label}] {turn['name']}: {turn['text']}", flush=True)
 
 
+def print_plan(plan: dict) -> None:
+    print(f"[계획]\n{plan['text']}\n", flush=True)
+
+
 def simulate_call(
     caller: PhoneAgent,
     callee: PhoneAgent,
     purpose: str,
     max_turns: int = 30,
     on_turn=print_turn,
+    on_plan=print_plan,
 ) -> dict:
     started_at = datetime.now()
     turns: list[dict] = []
     end_reason = "max_turns"
 
+    # 통화 전에 발신자가 계획을 세운다. 실패해도 계획 없이 통화는 진행한다.
+    plan = None
+    if caller.llm.plan_max_tokens > 0:
+        try:
+            plan = caller.plan(PLAN_REQUEST)
+            if plan:
+                on_plan(plan)
+            else:
+                print(
+                    "[경고] 계획이 비었거나 plan_max_tokens에서 잘려 계획 없이 진행합니다",
+                    flush=True,
+                )
+        except Exception as e:
+            print(f"[경고] 계획 생성 실패: {type(e).__name__}: {e}", flush=True)
+
     # 수신자가 먼저 전화를 받고, 이후 발신자와 수신자가 번갈아 말한다.
-    speaker, incoming = callee, RING_CUE
+    # 첫 인사는 모델에 맡기면 상황을 해설하듯 말하므로("전화가 왔나 봐요") 고정 대사로 넣는다.
+    callee.messages += [
+        {"role": "user", "content": RING_CUE},
+        {"role": "assistant", "content": CALLEE_GREETING},
+    ]
+    greeting = {"turn": 0, "speaker": callee.role, "name": callee.name,
+                "text": CALLEE_GREETING}
+    turns.append(greeting)
+    on_turn(greeting)
+    speaker, incoming = caller, CALLEE_GREETING
     while len(turns) < max_turns:
         if max_turns - len(turns) <= WRAP_UP_REMAINING and len(turns) > 0:
             incoming = f"{incoming} {WRAP_UP_HINT}"
@@ -121,7 +152,7 @@ def simulate_call(
         "end_reason": end_reason,
         "num_turns": len(turns),
         "llm": caller.llm.public(),
-        "caller": _agent_record(caller),
+        "caller": {**_agent_record(caller), "plan": plan},
         "callee": _agent_record(callee),
         "turns": turns,
     }
