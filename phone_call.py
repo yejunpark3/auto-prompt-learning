@@ -35,17 +35,14 @@ def _is_repeat(prev: str, text: str) -> bool:
 
 
 def build_agents(
-    caller_persona: dict, callee_persona: dict, purpose: str, llm: LLMConfig
+    caller_profile: str, callee_persona: dict, purpose: str, llm: LLMConfig
 ) -> tuple[PhoneAgent, PhoneAgent]:
-    caller_name = personas.persona_name(caller_persona)
     callee_name = personas.persona_name(callee_persona)
     caller = PhoneAgent(
         role="caller",
-        persona=caller_persona,
-        name=caller_name,
-        system_prompt=caller_prompt(
-            personas.render_profile(caller_persona), purpose
-        ),
+        persona=None,
+        name="상담원",
+        system_prompt=caller_prompt(caller_profile, purpose),
         llm=llm,
         tools=[END_CALL_TOOL],
     )
@@ -132,7 +129,7 @@ def simulate_call(
 
 def _agent_record(agent: PhoneAgent) -> dict:
     return {
-        "uuid": agent.persona["uuid"],
+        "uuid": agent.persona["uuid"] if agent.persona else None,
         "name": agent.name,
         "system_prompt": agent.system_prompt,
         "persona": agent.persona,
@@ -144,7 +141,7 @@ def save_record(record: dict, out_dir: str = DEFAULT_OUT_DIR) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     stamp = datetime.fromisoformat(record["started_at"]).strftime("%Y%m%d-%H%M%S")
     name = (
-        f"{stamp}_{record['caller']['uuid'][:6]}-{record['callee']['uuid'][:6]}"
+        f"{stamp}_{(record['caller']['uuid'] or 'agent')[:6]}-{record['callee']['uuid'][:6]}"
         f"_{record['call_id']}.json"
     )
     path = out / name

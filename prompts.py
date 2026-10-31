@@ -1,3 +1,5 @@
+from pathlib import Path
+
 END_CALL_NAME = "end_call"
 END_CALL_TOOL = {
     "type": "function",
@@ -11,6 +13,8 @@ END_CALL_TOOL = {
 RING_CUE = "[PHONE_CALLING_FROM_UNKNOWN_NUMBER]"
 WRAP_UP_HINT = "(통화가 길어지고 있습니다. 자연스럽게 마무리하세요.)"
 
+SYSTEM_PROMPT_PATH = str(Path(__file__).parent / "prompt" / "system.md")
+
 CHANNEL = "[Channel]\nKOREAN_VOICE_PHONE_CALL (한 번에 한두 문장, 대사만)"
 
 
@@ -20,3 +24,7 @@ def caller_prompt(profile: str, purpose: str) -> str:
 
 def callee_prompt(profile: str) -> str:
     return f"[Persona]\n{profile}\n{CHANNEL}\n[Role]\nCALLEE"
+
+
+def load_caller_profile(path: str = SYSTEM_PROMPT_PATH) -> str:
+    return Path(path).read_text(encoding="utf-8").strip()

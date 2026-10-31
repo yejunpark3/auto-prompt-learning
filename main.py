@@ -3,6 +3,7 @@ import random
 
 import personas
 from agent import DEFAULT_API_BASE, DEFAULT_MODEL, LLMConfig
+from prompts import SYSTEM_PROMPT_PATH, load_caller_profile
 from phone_call import DEFAULT_OUT_DIR, build_agents, save_record, simulate_call
 
 
@@ -10,8 +11,8 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Nemotron-Personas-Korea 페르소나 두 명의 전화통화 시뮬레이션"
     )
-    p.add_argument("--purpose", required=True, help="발신자가 전화를 건 목적")
-    p.add_argument("--caller-uuid", help="발신자 페르소나 uuid (없으면 무작위)")
+    p.add_argument("--purpose", required=True, help="판매할 상품 (발신자의 목적)")
+    p.add_argument("--caller-prompt", default=SYSTEM_PROMPT_PATH, help="발신자 시스템 프롬프트 파일")
     p.add_argument("--callee-uuid", help="수신자 페르소나 uuid (없으면 무작위)")
     p.add_argument("--seed", type=int, help="페르소나 샘플링 시드")
     p.add_argument("--max-turns", type=int, default=30)
@@ -30,6 +31,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    try:
+        caller_profile = load_caller_profile(args.caller_prompt)
+    except OSError as e:
+        raise SystemExit(f"발신자 프롬프트를 읽을 수 없습니다: {e}")
     rng = random.Random(args.seed)
     llm = LLMConfig(
         model=args.model,
@@ -40,24 +45,18 @@ def main() -> None:
 
     for i in range(args.n):
         # uuid를 지정한 경우 첫 통화에만 쓰고, 이후 통화는 새로 뽑는다.
-        pinned = i == 0
-        caller_p = (
-            personas.get_persona(args.caller_uuid)
-            if pinned and args.caller_uuid
-            else personas.sample_persona(rng)
-        )
         callee_p = (
             personas.get_persona(args.callee_uuid)
-            if pinned and args.callee_uuid
-            else personas.sample_persona(rng, exclude_uuid=caller_p["uuid"])
+            if i == 0 and args.callee_uuid
+            else personas.sample_persona(rng)
         )
 
         print(f"\n=== 통화 {i + 1}/{args.n} ===")
-        print(f"발신자: {personas.summarize(caller_p)}")
+        print(f"발신자: 상담원 ({args.caller_prompt})")
         print(f"수신자: {personas.summarize(callee_p)}")
         print(f"목적: {args.purpose}\n")
 
-        caller, callee = build_agents(caller_p, callee_p, args.purpose, llm)
+        caller, callee = build_agents(caller_profile, callee_p, args.purpose, llm)
         record = simulate_call(caller, callee, args.purpose, max_turns=args.max_turns)
         path = save_record(record, args.out)
         print(f"\n종료: {record['end_reason']} ({record['num_turns']}턴) → {path}")

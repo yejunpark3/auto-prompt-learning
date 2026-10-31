@@ -83,7 +83,7 @@ def clean_utterance(text: str) -> str:
 @dataclass
 class PhoneAgent:
     role: str  # "caller" | "callee"
-    persona: dict
+    persona: dict | None
     name: str
     system_prompt: str
     llm: LLMConfig

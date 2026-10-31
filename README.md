@@ -1,8 +1,8 @@
 # auto-prompt-learning
 
-[Nemotron-Personas-Korea](https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea)에서 페르소나 두 명을 뽑아 발신자/수신자 에이전트로 만들고, litellm으로 LLM을 호출해 전화통화를 텍스트로 시뮬레이션한다. 통화 기록은 JSON으로 저장된다.
+[Nemotron-Personas-Korea](https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea)에서 페르소나 한 명을 뽑아 수신자로 만들고, 텔레마케터(발신자)가 상품 판매 전화를 거는 상황을 litellm으로 텍스트 시뮬레이션한다. 통화 기록은 JSON으로 저장된다.
 
-- 발신자는 `--purpose`로 준 통화 목적을 알고 있고, 수신자는 모르는 번호로 전화를 받는다.
+- 발신자는 페르소나 없이 `prompt/system.md`를 시스템 프롬프트로 쓰고, `--purpose`로 준 판매 상품을 안다. 수신자는 모르는 번호로 전화를 받는다.
 - 수신자가 먼저 "여보세요"로 받고, 이후 번갈아 말한다. 한쪽이 `end_call` 도구(tool calling)를 호출하면 통화가 끝난다.
 
 ## 준비
@@ -34,13 +34,14 @@ uv run main.py --purpose "..." --model openai/mlx-community/Qwen3.5-4B-OptiQ-4bi
 ## 실행
 
 ```
-uv run main.py --purpose "다음 달 동창회 참석 여부를 물어보려고 전화함" --seed 1
+uv run main.py --purpose "월 9,900원 실손보험 가입 권유" --seed 1
 ```
 
 | 옵션 | 설명 |
 |---|---|
-| `--purpose` | (필수) 발신자가 전화를 건 목적 |
-| `--caller-uuid`, `--callee-uuid` | 페르소나를 지정. 없으면 무작위 |
+| `--purpose` | (필수) 판매할 상품 |
+| `--caller-prompt` | 발신자 시스템 프롬프트 파일 (기본: 저장소의 `prompt/system.md`) |
+| `--callee-uuid` | 수신자 페르소나를 지정. 없으면 무작위 |
 | `--seed` | 페르소나 샘플링 시드 |
 | `--n` | 페르소나를 새로 뽑아 반복할 통화 수 |
 | `--max-turns` | 최대 턴 수 (기본 30) |
@@ -56,12 +57,13 @@ uv run main.py --purpose "..." --model gemini/gemini-2.5-flash --api-base ""
 
 ## 출력
 
-통화마다 `{시작시각}_{발신자uuid6}-{수신자uuid6}_{call_id}.json`이 저장된다.
+통화마다 `{시작시각}_agent-{수신자uuid6}_{call_id}.json`이 저장된다.
 
 ```
 call_id, started_at, ended_at, purpose, end_reason, num_turns,
 llm: {model, api_base, temperature, top_p, max_tokens, extra_body},
-caller / callee: {uuid, name, system_prompt, persona(원본 26개 필드)},
+caller: {uuid: null, name, system_prompt, persona: null}
+callee: {uuid, name, system_prompt, persona(원본 26개 필드)},
 turns: [{turn, speaker, name, text, latency_s, usage, reasoning}]
 ```
 
@@ -72,7 +74,7 @@ turns: [{turn, speaker, name, text, latency_s, usage, reasoning}]
 | 파일 | 역할 |
 |---|---|
 | `personas.py` | 데이터셋 로드, 샘플링, 프로필 렌더링 |
-| `prompts.py` | 시스템 프롬프트와 전화 규칙 (프롬프트를 고칠 때는 여기만) |
+| `prompts.py` | 전화 규칙과 프롬프트 조립 (발신자 본문은 `prompt/system.md`) |
 | `agent.py` | `LLMConfig`, `PhoneAgent` (litellm 호출, 출력 정리) |
 | `phone_call.py` | 통화 루프, 종료 판정, 기록 저장 |
 | `main.py` | CLI |
