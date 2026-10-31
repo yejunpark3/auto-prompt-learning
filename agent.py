@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass, field
 
 import litellm
 
-from prompts import END_CALL_NAME, with_plan
+from prompts import END_CALL_NAME, HANGUP_TOOL_NAMES, with_plan
 
 # 로컬에서 `optiq serve`로 띄워 둔 9B 서버.
 DEFAULT_MODEL = "openai/mlx-community/Qwen3.5-9B-OptiQ-4bit:think"
@@ -27,8 +27,9 @@ _TOOL_CALL_RE = re.compile(r"<tool_call>.*?(?:</tool_call>|\Z)", re.DOTALL)
 _LABEL_RE =re.compile(r"^\s*[\[(]?[가-힣A-Za-z0-9 ]{1,12}[\])]?\s*:\s*")
 _ACTION_RE = re.compile(r"\([^)]*\)|\*[^*]*\*")
 # 서버가 파싱하지 못하고 텍스트로 남긴 종료 표시: `<end_call>`, `[END CALL]` 등.
+_HANGUP_ALT = "|".join(HANGUP_TOOL_NAMES)
 _END_TAG_RE = re.compile(
-    rf"</?{END_CALL_NAME}\s*/?>|\[\s*END[ _-]?CALL\s*\]", re.IGNORECASE
+    rf"</?(?P<name>{_HANGUP_ALT})\s*/?>|\[\s*END[ _-]?CALL\s*\]", re.IGNORECASE
 )
 # 모델이 흉내 내는 `[PHONE_CALL_STARTED]`, `[]` 같은 대괄호 토큰. 음성 발화가 아니다.
 _BRACKET_RE = re.compile(r"\[[^\]]*\]")
@@ -77,6 +78,22 @@ def _strip_think(text: str) -> str:
     return text.split("</think>")[-1]
 
 
+def _hangup_name(tool_calls, content: str) -> str:
+    """통화를 끝내는 도구 이름을 돌려준다. 없으면 빈 문자열."""
+    for tc in tool_calls or []:
+        if tc.function.name in HANGUP_TOOL_NAMES:
+            return tc.function.name
+    visible = _strip_think(content)
+    for block in _TOOL_CALL_RE.findall(visible):
+        for name in HANGUP_TOOL_NAMES:
+            if name in block:
+                return name
+    m = _END_TAG_RE.search(visible)
+    if m:
+        return (m.group("name") or END_CALL_NAME).lower()
+    return ""
+
+
 def clean_utterance(text: str) -> str:
     """모델 출력에서 thinking, tool call 원문, 화자 라벨, 행동 묘사, 감싼 따옴표를 걷어낸다."""
     text = _strip_think(text)
@@ -106,7 +123,7 @@ class PhoneAgent:
 
     def _complete(
         self, messages=None, max_tokens=None, tools="default"
-    ) -> tuple[str, bool, dict]:
+    ) -> tuple[str, str, dict]:
         kwargs = dict(
             model=self.llm.model,
             messages=self.messages if messages is None else messages,
@@ -133,18 +150,13 @@ class PhoneAgent:
             "tool_calls": [
                 {"id": tc.id, "name": tc.function.name, "arguments": tc.function.arguments}
                 for tc in message.tool_calls or []
-                if tc.function.name != END_CALL_NAME
+                if tc.function.name not in HANGUP_TOOL_NAMES
             ],
         }
         content = message.content or ""
         # 서버가 tool_calls로 파싱하지 못하고 content에 <tool_call> 원문을 남기는 경우도 본다.
         # thinking 안에서 언급만 한 호출은 세지 않도록 thinking을 먼저 걷어낸다.
-        ended = any(
-            tc.function.name == END_CALL_NAME for tc in message.tool_calls or []
-        ) or any(
-            END_CALL_NAME in block
-            for block in _TOOL_CALL_RE.findall(_strip_think(content))
-        ) or bool(_END_TAG_RE.search(_strip_think(content)))
+        ended = _hangup_name(message.tool_calls, content)
         return content, ended, meta
 
     def plan(self, request: str) -> dict | None:
@@ -157,7 +169,9 @@ class PhoneAgent:
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": request},
         ]
-        plan_tools = [t for t in self.tools or [] if t["function"]["name"] != END_CALL_NAME]
+        plan_tools = [
+            t for t in self.tools or [] if t["function"]["name"] not in HANGUP_TOOL_NAMES
+        ]
         raw, _, meta, lookups = self._generate(
             messages=messages,
             max_tokens=self.llm.plan_max_tokens,
@@ -199,7 +213,7 @@ class PhoneAgent:
     def _generate(
         self, messages=None, max_tokens=None, tools=None, final_tools=None,
         max_rounds=MAX_TOOL_ROUNDS,
-    ) -> tuple[str, bool, dict, list[dict]]:
+    ) -> tuple[str, str, dict, list[dict]]:
         """도구 호출을 처리하며 한 번 생성한다. 마지막 라운드는 final_tools만 열어 반드시 글로 답하게 한다.
 
         기본값은 통화 발화용: messages=self.messages, 모든 도구, 마지막 라운드는 end_call만.
@@ -208,8 +222,8 @@ class PhoneAgent:
         if tools is None:
             tools = self.tools
         if final_tools is None:
-            final_tools = [t for t in self.tools or [] if t["function"]["name"] == END_CALL_NAME]
-        has_lookup = any(t["function"]["name"] != END_CALL_NAME for t in tools or [])
+            final_tools = [t for t in self.tools or [] if t["function"]["name"] in HANGUP_TOOL_NAMES]
+        has_lookup = any(t["function"]["name"] not in HANGUP_TOOL_NAMES for t in tools or [])
         lookups: list[dict] = []
         for round_ in range(max_rounds + 1):
             last = round_ == max_rounds or not (self.tool_runner and has_lookup)
@@ -224,9 +238,9 @@ class PhoneAgent:
             lookups += self._run_tools(messages, raw, calls)
         return raw, ended, meta, lookups
 
-    def respond(self, incoming: str) -> tuple[str, bool, dict]:
+    def respond(self, incoming: str) -> tuple[str, str, dict]:
         self.messages.append({"role": "user", "content": incoming})
-        text, ended, meta, lookups = "", False, {}, []
+        text, ended, meta, lookups = "", "", {}, []
         for _ in range(2):  # 빈 응답이면 한 번 재시도 (바로 끊은 경우는 제외)
             raw, ended, meta, used = self._generate()
             lookups += used

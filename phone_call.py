@@ -13,6 +13,8 @@ from prompts import (
     END_CALL_TOOL,
     PLAN_REQUEST,
     PLAN_WIKI_HINT,
+    REPORT_SPAM_NAME,
+    REPORT_SPAM_TOOL,
     RING_CUE,
     WRAP_UP_HINT,
     callee_prompt,
@@ -71,7 +73,7 @@ def build_agents(
         name=callee_name,
         system_prompt=callee_prompt(personas.render_profile(callee_persona)),
         llm=llm,
-        tools=[END_CALL_TOOL],
+        tools=[END_CALL_TOOL, REPORT_SPAM_TOOL],
     )
     return caller, callee
 
@@ -143,11 +145,14 @@ def simulate_call(
                 "text": text, **meta}
         if hung_up:
             turn["hangup"] = True
+        if hung_up == REPORT_SPAM_NAME:
+            turn["spam_report"] = True
         turns.append(turn)
         on_turn(turn)
 
         if hung_up:
-            end_reason = f"hangup_by_{speaker.role}"
+            kind = "spam_reported" if hung_up == REPORT_SPAM_NAME else "hangup"
+            end_reason = f"{kind}_by_{speaker.role}"
             break
         if not text:
             end_reason = "empty_response"

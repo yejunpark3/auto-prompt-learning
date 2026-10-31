@@ -70,7 +70,7 @@ callee: {uuid, name, system_prompt, persona(원본 26개 필드)},
 turns: [{turn, speaker, name, text, latency_s, finish_reason, usage, reasoning}]
 ```
 
-`end_reason`: `hangup_by_caller`, `hangup_by_callee`, `max_turns`, `repetition_loop`(같은 화자가 직전 발화를 되풀이), `empty_response`, `error`.
+`end_reason`: `hangup_by_caller`, `hangup_by_callee`, `spam_reported_by_callee`(수신자가 `report_spam`으로 신고하고 끊음), `max_turns`, `repetition_loop`(같은 화자가 직전 발화를 되풀이), `empty_response`, `error`.
 
 ## 구조
 

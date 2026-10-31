@@ -10,6 +10,18 @@ END_CALL_TOOL = {
     },
 }
 
+REPORT_SPAM_NAME = "report_spam"
+REPORT_SPAM_TOOL = {
+    "type": "function",
+    "function": {
+        "name": REPORT_SPAM_NAME,
+        "description": "스팸·원치 않는 광고 전화로 신고하고 통화를 끊는다",
+        "parameters": {"type": "object", "properties": {}},
+    },
+}
+# 호출하면 통화가 끝나는 도구들.
+HANGUP_TOOL_NAMES = (END_CALL_NAME, REPORT_SPAM_NAME)
+
 RING_CUE = "[PHONE_CALLING_FROM_STRANGER]"
 CALLEE_GREETING = "여보세요?"
 WRAP_UP_HINT ="(통화가 길어지고 있습니다. 자연스럽게 마무리하세요.)"
