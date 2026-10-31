@@ -1,4 +1,4 @@
-"""최근 N개 통화 기록의 루프 지표를 출력한다. 사용: uv run tmp/loop_stats.py --last 10"""
+"""최근 N개 통화 기록의 루프 지표를 출력한다. 사용: uv run tmp/loop_stats.py --last 20"""
 import argparse
 import json
 import re
@@ -11,7 +11,7 @@ LOOPY = {"repetition_loop", "max_turns", "empty_response"}
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--last", type=int, default=10)
+    p.add_argument("--last", type=int, default=20)
     p.add_argument("--dir", default="agent_workspace/conversation_history")
     args = p.parse_args()
 
