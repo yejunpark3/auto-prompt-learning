@@ -1,4 +1,4 @@
-"""최근 N개 통화 기록의 루프 지표를 출력한다. 사용: uv run tmp/loop_stats.py --last 20"""
+"""최근 N개 통화 기록의 루프 지표를 출력한다. 사용: uv run scripts/loop_stats.py --last 20"""
 import argparse
 import json
 import re

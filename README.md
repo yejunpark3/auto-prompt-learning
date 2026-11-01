@@ -118,9 +118,9 @@ uv run wiki_store.py read|delete|list|reindex
 통화 `--learn-every`(기본 20, 0이면 끔)건마다 발신자의 `prompt/system.md`와 `wiki/`를 자동으로 고친다. 같은 모델이 두 단계로 일한다.
 
 1. 통화 직후 `reviewer.review_call`이 평가(스팸 신고 여부는 `end_reason`으로, 목적 달성 여부와 근거 메모는 모델이)를 만들어 기록의 `review`에 저장하고 `agent_workspace/learning/pending.jsonl`에 쌓는다. 스팸 신고된 통화는 모델 응답과 무관하게 항상 대기열에 들어간다. 여러 번에 나눠 실행해도 이어서 센다(옛 형식 행은 경고를 내고 버린다).
-2. 쌓인 리뷰가 N건이 되면 `learner.learn`이 리뷰·현재 프롬프트·위키 목록을 보고 위키 도구와 `prompt_write`로 고친다. 다음 통화부터 새 프롬프트를 쓴다.
+2. 쌓인 리뷰가 N건이 되면 `learner.learn`이 리뷰·현재 프롬프트·위키 목록을 보고 위키 도구와 `prompt_edit`(old_string→new_string 치환, Edit 도구처럼 한 곳씩)로 고친다. 다음 통화부터 새 프롬프트를 쓴다.
 
-system.md는 20자 미만이거나 300자를 넘으면 거절된다. 신고가 아닌 통화는 리뷰 형식이 틀리면 한 번 다시 묻고, 그래도 못 읽거나 비었거나 max_tokens에서 잘리면 대기열에 넣지 않는다. `wiki/.readonly`(한 줄에 glob 하나, `#` 주석)에 적힌 문서는 학습자가 고칠 수 없다(예: `상품/*`). 회차마다 `agent_workspace/learning/round_NNN/`에 `system_before/after.md`, `wiki_before/after/`, `reviews.json`(달성률·신고율), `learner.json`을 남기므로 `*_before`를 복사해 되돌릴 수 있다. `uv run learner.py [--now]`로 대기열을 보거나 바로 학습한다. 기록에는 `review: {spam, achieved, notes, latency_s}`가 추가된다.
+system.md는 편집 결과가 20자 미만이거나 600자를 넘거나 old_string이 정확히 한 번 나오지 않으면 거절된다. 신고가 아닌 통화는 리뷰 형식이 틀리면 한 번 다시 묻고, 그래도 못 읽거나 비었거나 max_tokens에서 잘리면 대기열에 넣지 않는다. `wiki/.readonly`(한 줄에 glob 하나, `#` 주석)에 적힌 문서는 학습자가 고칠 수 없다(예: `상품/*`). 회차마다 `agent_workspace/learning/round_NNN/`에 `system_before/after.md`, `wiki_before/after/`, `reviews.json`(달성률·신고율), `learner.json`을 남기므로 `*_before`를 복사해 되돌릴 수 있다. `uv run learner.py [--now]`로 대기열을 보거나 바로 학습한다. 기록에는 `review: {spam, achieved, notes, latency_s}`가 추가된다.
 
 ## 알려진 한계
 

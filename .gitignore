@@ -11,3 +11,13 @@ wheels/
 
 # Agent Workspace
 agent_workspace/
+
+# Wiki embedding index (regenerated automatically)
+wiki/.index/
+
+# Loop experiment run logs
+tmp/runs/
+
+# macOS
+.DS_Store
+tmp/

@@ -106,6 +106,14 @@ def clean_utterance(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().strip(_QUOTES).strip()
 
 
+_SENTENCE_END_RE = re.compile(r"(?<=[^\d\W][.!?。])\s+")
+CALLER_MAX_SENTENCES = 2
+
+
+def limit_sentences(text: str, n: int) -> str:
+    return " ".join(_SENTENCE_END_RE.split(text)[:n])
+
+
 @dataclass
 class PhoneAgent:
     role: str  # "caller" | "callee"
@@ -245,6 +253,11 @@ class PhoneAgent:
             raw, ended, meta, used = self._generate()
             lookups += used
             text = clean_utterance(raw)
+            if self.role == "caller" and not ended:  # 마무리 인사·사과는 자르지 않는다
+                limited = limit_sentences(text, CALLER_MAX_SENTENCES)
+                if limited != text:
+                    meta["truncated_from"] = text
+                text = limited
             # 도구를 쓴 뒤 비었으면 다시 시도하지 않는다 (이미 늘어난 기록 위에서 호출이 불어난다).
             if text or ended or used:
                 break

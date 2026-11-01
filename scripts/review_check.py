@@ -1,4 +1,4 @@
-"""기록 몇 건을 리뷰어로 2번씩 다시 돌려 판정 일관성을 본다. 사용: uv run tmp/review_check.py [기록.json ...]"""
+"""기록 몇 건을 리뷰어로 2번씩 다시 돌려 판정 일관성을 본다. 사용: uv run scripts/review_check.py [기록.json ...]"""
 import argparse
 import json
 import sys

@@ -37,7 +37,8 @@ CHANNEL = "[Channel]\nKOREAN_VOICE_PHONE_CALL (한 번에 한두 문장, 대사�
 def caller_prompt(profile: str, purpose: str, callee_info: str) -> str:
     return (
         f"[Persona]\n{profile}\n{CHANNEL}\n[Role]\nCALLER\n"
-        f"[Callee]\n{callee_info}[Goal]\n{purpose}"
+        f"[Callee]\n{callee_info}[Goal]\n{purpose}\n"
+        "[Note]\n수신자의 이름이나 연락처처럼 알지 못하는 정보는 지어내지 않는다."
     )
 
 
@@ -83,10 +84,11 @@ REVIEW_REQUEST = (
 
 LEARN_REQUEST = (
     "너는 전화 발신자의 시스템 프롬프트와 위키를 개선한다. 아래는 최근 {n}통화의 리뷰이다(목적 달성률 {achieved_rate}, 스팸 신고율 {spam_rate}). 우선순위는 스팸 신고를 줄이는 것, 그다음 목적 달성률을 높이는 것이다.\n\n"
-    "{reviews}\n\n[현재 system.md]\n{prompt}\n\n[위키 문서]\n{pages}\n\n"
+    "{reviews}\n\n[이전 학습 이력]\n{history}\n\n[현재 system.md]\n{prompt}\n\n[위키 문서]\n{pages}\n\n"
     "[고칠 수 없는 위키 문서]\n{readonly}\n\n"
-    "반복되는 문제를 골라 고쳐라. 행동 원칙은 prompt_write로 system.md를 짧게(최대 {max_chars}자) 다시 쓰고, "
-    "상황별 요령·지식은 위키 도구로 추가·수정하라. 고칠 수 없는 문서는 건드리지 마라. "
+    "이력의 각 변경 옆 '변경 후 묶음' 지표로 효과를 판단해, 나빠진 변경은 되돌리고 효과 있던 변경은 유지하며 같은 수정을 되풀이하지 마라(20통화 묶음은 변동이 커서 작은 차이는 우연일 수 있다). "
+    "반복되는 문제를 골라 고쳐라. system.md에는 역할과 핵심 원칙만 두고(최대 {max_chars}자), prompt_edit로 현재 문장 중 1~2곳만 고친다. "
+    "상황별 요령·금지 사항·지식은 위키 도구로 추가·수정하라. 고칠 수 없는 문서는 건드리지 마라. "
     "위키와 통화 목적에 없는 사실(숫자·조건·연락처 등)은 지어내지 마라. "
     "끝나면 바꾼 내용을 한두 줄로 요약하라."
 )
