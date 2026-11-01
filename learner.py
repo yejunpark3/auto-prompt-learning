@@ -1,6 +1,10 @@
 import argparse
 import json
+import random
+import re
+import secrets
 import shutil
+import string
 from datetime import datetime
 from pathlib import Path
 
@@ -9,7 +13,6 @@ from agent import LEARN_TOOL_ROUNDS, LLMConfig, PhoneAgent, _strip_think
 from prompts import (
     LEARN_REQUEST,
     SYSTEM_PROMPT_PATH,
-    load_caller_profile,
 )
 
 LEARN_DIR = Path("agent_workspace/learning")
@@ -20,10 +23,63 @@ WRITE_TOOLS = {"wiki_create", "wiki_update", "wiki_delete"}
 
 PROMPT_EDIT_TOOL = wiki_store._tool(
     "prompt_edit",
-    f"발신자 system.md에서 old_string을 new_string으로 바꾼다 (old_string은 정확히 한 번만 나와야 한다, 결과는 최대 {PROMPT_MAX_CHARS}자)",
-    {"old_string": {"type": "string"}, "new_string": {"type": "string"}},
-    ["old_string", "new_string"],
+    f"발신자 system.md를 줄 ID([k7x2] 같은 영문 소문자+숫자 4자리 코드)로 고친다. replace는 그 줄을 new_text로 바꾸고, insert_after는 그 줄 뒤에 new_text를 넣고(line_id가 START면 맨 앞), delete는 그 줄을 지운다. "
+    f"new_text에는 [ID] 표시 없이 내용만 쓴다. 고치지 않은 줄의 ID는 그대로이고 새로 생긴 줄만 새 ID를 받는다 (결과는 최대 {PROMPT_MAX_CHARS}자)",
+    {"action": {"type": "string", "enum": ["replace", "insert_after", "delete"]},
+     "line_id": {"type": "string"}, "new_text": {"type": "string"}},
+    ["action", "line_id"],
 )
+LINE_TAG = re.compile(r"^\[[a-z0-9]{4}\]\s*")
+START = "START"
+ID_CHARS = string.ascii_lowercase + string.digits
+
+
+class PromptLines:
+    """system.md의 줄마다 무작위 ID를 붙여 학습자에게 보여 준다 (ID는 파일에 쓰지 않고 한 회차 동안만 유지)."""
+
+    def __init__(self, text: str):
+        self._used: set[str] = set()
+        self.rows = self._assign(text)
+
+    def _new_id(self) -> str:
+        while (i := "".join(secrets.choice(ID_CHARS) for _ in range(4))) in self._used or i.isalpha() or i.isdigit():
+            pass
+        self._used.add(i)
+        return i
+
+    def _assign(self, text: str) -> list[tuple[str, str]]:
+        return [(self._new_id(), l) for l in text.strip().splitlines()]
+
+    def text(self) -> str:
+        return "\n".join(l for _, l in self.rows)
+
+    def show(self) -> str:
+        return "\n".join(f"[{i}] {l}" for i, l in self.rows)
+
+    def sync(self, text: str) -> None:
+        if text.strip() != self.text():  # 파일이 밖에서 바뀐 경우에만 새로 매긴다
+            self.rows = self._assign(text)
+
+    def edit(self, action: str, line_id: str, new_text: str) -> str | None:
+        """성공하면 None, 실패하면 오류 문장."""
+        if action not in ("replace", "insert_after", "delete"):
+            return "오류: action은 replace, insert_after, delete 중 하나여야 합니다"
+        line_id = line_id.strip().strip("[]").lower()
+        ids = [i for i, _ in self.rows]
+        if action == "insert_after" and line_id == START.lower():
+            pos = 0
+        elif line_id in ids:
+            pos = ids.index(line_id) + (action == "insert_after")
+        else:
+            return f"오류: 없는 line_id입니다: {line_id}"
+        new = [(self._new_id(), LINE_TAG.sub("", l)) for l in new_text.strip().splitlines()]
+        if action != "delete" and not new:
+            return f"오류: {action}에는 new_text가 필요합니다 (지우려면 delete)"
+        if action == "insert_after":
+            self.rows[pos:pos] = new
+        else:
+            self.rows[pos:pos + 1] = new if action == "replace" else []
+        return None
 
 
 def enqueue(record: dict, path: Path) -> int:
@@ -55,24 +111,28 @@ def _copy_wiki(dst: Path) -> None:
     shutil.copytree(wiki_store.WIKI_ROOT, dst, ignore=shutil.ignore_patterns(".*"))
 
 
-def _tool_runner(prompt_path: str):
+def _tool_runner(prompt_path: str, lines: PromptLines):
     def run(name: str, arguments: str) -> str:
         if name == "prompt_edit":
             try:
                 a = json.loads(arguments)
-                old, new = a["old_string"], a["new_string"]
+                action, line_id, new = a["action"], str(a["line_id"]), str(a.get("new_text") or "")
                 text = Path(prompt_path).read_text(encoding="utf-8")
             except (ValueError, KeyError, TypeError, AttributeError, OSError):
                 return "오류: 잘못된 인자"
-            if not old or text.count(old) != 1:
-                return f"오류: old_string이 system.md에 정확히 한 번 나와야 합니다 (현재 {text.count(old) if old else 0}번)"
-            edited = text.replace(old, new).strip()
-            if len(edited) < PROMPT_MIN_CHARS:
-                return f"오류: 결과가 {len(edited)}자입니다. 최소 {PROMPT_MIN_CHARS}자여야 합니다"
-            if len(edited) > PROMPT_MAX_CHARS:
-                return f"오류: 결과가 {len(edited)}자입니다. {PROMPT_MAX_CHARS}자 이하로 줄이세요"
+            lines.sync(text)
+            before = list(lines.rows)
+            err = lines.edit(action, line_id, new)
+            edited = lines.text().strip()
+            if err is None and len(edited) < PROMPT_MIN_CHARS:
+                err = f"오류: 결과가 {len(edited)}자입니다. 최소 {PROMPT_MIN_CHARS}자여야 합니다"
+            if err is None and len(edited) > PROMPT_MAX_CHARS:
+                err = f"오류: 결과가 {len(edited)}자입니다. {PROMPT_MAX_CHARS}자 이하로 줄이세요"
+            if err:
+                lines.rows = before
+                return f"{err}\n현재 system.md:\n{lines.show()}"
             Path(prompt_path).write_text(edited + "\n", encoding="utf-8")
-            return "system.md를 고쳤습니다"
+            return f"system.md를 고쳤습니다. 최신 줄 ID:\n{lines.show()}"
         if name in WRITE_TOOLS:
             try:
                 a = json.loads(arguments)
@@ -134,14 +194,16 @@ def learn(llm: LLMConfig, prompt_path: str = SYSTEM_PROMPT_PATH) -> Path:
             json.dumps({**rates, "reviews": rows}, ensure_ascii=False, indent=2),
             encoding="utf-8")
 
+        lines = PromptLines(prompt_path)
+        lines = PromptLines(load_caller_profile(prompt_path))
         reviews = "\n\n".join(f"- (목적: {r.get('purpose', '')}, {r['end_reason']}, 달성 {'예' if r['achieved'] else '아니오'}, 신고 {'예' if r['spam'] else '아니오'}) {r['notes']}" for r in rows)
         request = LEARN_REQUEST.format(
-            n=len(rows), achieved_rate=rates["achieved_rate"], spam_rate=rates["spam_rate"], reviews=reviews, history=_history(n, rates), prompt=load_caller_profile(prompt_path),
+            n=len(rows), achieved_rate=rates["achieved_rate"], spam_rate=rates["spam_rate"], reviews=reviews, history=_history(n, rates), prompt=lines.render(),
             pages="\n".join(wiki_store.list_pages()) or "(없음)", max_chars=PROMPT_MAX_CHARS,
             readonly="\n".join(wiki_store.readonly_patterns()) or "(없음)")
         learner = PhoneAgent(
             "learner", None, "학습자", "전화 발신자의 프롬프트와 위키를 개선한다.", llm,
-            tools=[*wiki_store.WIKI_TOOLS, PROMPT_EDIT_TOOL], tool_runner=_tool_runner(prompt_path))
+            tools=[*wiki_store.WIKI_TOOLS, PROMPT_EDIT_TOOL], tool_runner=_tool_runner(lines))
         raw, _, meta, lookups = learner._generate(
             messages=[{"role": "system", "content": learner.system_prompt},
                       {"role": "user", "content": request}],
