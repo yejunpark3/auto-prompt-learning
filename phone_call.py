@@ -75,7 +75,8 @@ def build_agents(
         name=callee_name,
         system_prompt=callee_prompt(personas.render_profile(callee_persona)),
         llm=llm,
-        tools=[END_CALL_TOOL, REPORT_SPAM_TOOL],
+        tools=[END_CALL_TOOL],  # REPORT_SPAM_TOOL 비활성화
+        # tools=[END_CALL_TOOL, REPORT_SPAM_TOOL],
     )
     return caller, callee
 

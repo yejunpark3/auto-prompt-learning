@@ -13,6 +13,7 @@ from agent import LEARN_TOOL_ROUNDS, LLMConfig, PhoneAgent, _strip_think
 from prompts import (
     LEARN_REQUEST,
     SYSTEM_PROMPT_PATH,
+    load_caller_profile,
 )
 
 LEARN_DIR = Path("agent_workspace/learning")

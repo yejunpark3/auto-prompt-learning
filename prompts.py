@@ -22,7 +22,7 @@ REPORT_SPAM_TOOL = {
 # 호출하면 통화가 끝나는 도구들.
 HANGUP_TOOL_NAMES = (END_CALL_NAME, REPORT_SPAM_NAME)
 
-RING_CUE = "[PHONE_CALLING_FROM_STRANGER]"
+RING_CUE = "(모르는 번호로 전화가 왔다)"
 CALLEE_GREETING = "여보세요?"
 WRAP_UP_HINT ="(통화가 길어지고 있습니다. 자연스럽게 마무리하세요.)"
 
@@ -69,7 +69,7 @@ SUBMIT_REVIEW_TOOL = {
                 },
                 "notes": {
                     "type": "string",
-                    "description": "그렇게 판단한 근거, 효과적이었던 말, 문제였던 말, 근거 없이 지어낸 정보를 3~5줄로",
+                    "description": "그렇게 판단한 근거, 효과적이었던 말, 문제였던 말, 한국어 전화에서 어색한 표현, 근거 없이 지어낸 정보를 3~5줄로",
                 },
             },
             "required": ["achieved", "notes"],

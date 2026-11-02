@@ -107,7 +107,7 @@ def clean_utterance(text: str) -> str:
 
 
 _SENTENCE_END_RE = re.compile(r"(?<=[^\d\W][.!?。])\s+")
-CALLER_MAX_SENTENCES = 2
+MAX_SENTENCES = {"caller": 2, "callee": 2}
 
 
 def limit_sentences(text: str, n: int) -> str:
@@ -253,8 +253,8 @@ class PhoneAgent:
             raw, ended, meta, used = self._generate()
             lookups += used
             text = clean_utterance(raw)
-            if self.role == "caller" and not ended:  # 마무리 인사·사과는 자르지 않는다
-                limited = limit_sentences(text, CALLER_MAX_SENTENCES)
+            if not ended and (n := MAX_SENTENCES.get(self.role)):  # 마무리 인사·사과는 자르지 않는다
+                limited = limit_sentences(text, n)
                 if limited != text:
                     meta["truncated_from"] = text
                 text = limited
