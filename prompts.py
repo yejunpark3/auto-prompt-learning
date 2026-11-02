@@ -10,17 +10,18 @@ END_CALL_TOOL = {
     },
 }
 
-REPORT_SPAM_NAME = "report_spam"
-REPORT_SPAM_TOOL = {
-    "type": "function",
-    "function": {
-        "name": REPORT_SPAM_NAME,
-        "description": "스팸·원치 않는 전화로 신고하고 통화를 끊는다",
-        "parameters": {"type": "object", "properties": {}},
-    },
-}
+# REPORT_SPAM_NAME = "report_spam"
+# REPORT_SPAM_TOOL = {
+#     "type": "function",
+#     "function": {
+#         "name": REPORT_SPAM_NAME,
+#         "description": "스팸·원치 않는 전화로 신고하고 통화를 끊는다",
+#         "parameters": {"type": "object", "properties": {}},
+#     },
+# }
 # 호출하면 통화가 끝나는 도구들.
-HANGUP_TOOL_NAMES = (END_CALL_NAME, REPORT_SPAM_NAME)
+HANGUP_TOOL_NAMES = (END_CALL_NAME,)
+# HANGUP_TOOL_NAMES = (END_CALL_NAME, REPORT_SPAM_NAME)
 
 RING_CUE = "(모르는 번호로 전화가 왔다)"
 CALLEE_GREETING = "여보세요?"
