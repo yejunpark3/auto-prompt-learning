@@ -43,6 +43,7 @@ MAX_TOOL_ROUNDS = 3
 LEARN_TOOL_ROUNDS = 8
 MAX_TOOL_RESULT_CHARS = 3000
 _QUOTES = "\"'“”‘’「」"
+_DOUBLE_QUOTE_RE = re.compile("[\"“”「」]")
 
 
 @dataclass
@@ -103,6 +104,7 @@ def clean_utterance(text: str) -> str:
     text = _BRACKET_RE.sub("", text)
     text = _ACTION_RE.sub("", text)
     text = _NON_SPEECH_RE.sub("", text)
+    text = _DOUBLE_QUOTE_RE.sub("", text)  # 음성 발화에 따옴표는 없다. 중간에 짝 없이 남는 것도 지운다
     return re.sub(r"\s+", " ", text).strip().strip(_QUOTES).strip()
 
 
@@ -125,6 +127,8 @@ class PhoneAgent:
     # (이름, 인자)를 받아 결과 문자열을 돌려주는 도구 실행기. end_call 외의 도구 호출을 처리한다.
     tool_runner: Callable[[str, str], str] | None = None
     messages: list[dict] = field(init=False)
+    # 이 통화에서 이 에이전트가 모델로 만든 발화 수. 수신자의 고정 인사는 세지 않는다.
+    spoken: int = field(init=False, default=0)
 
     def __post_init__(self):
         self.messages = [{"role": "system", "content": self.system_prompt}]
@@ -248,11 +252,20 @@ class PhoneAgent:
 
     def respond(self, incoming: str) -> tuple[str, str, dict]:
         self.messages.append({"role": "user", "content": incoming})
-        text, ended, meta, lookups = "", "", {}, []
+        first = self.spoken == 0
+        # 첫 발화는 끊기일 수 없다. 작은 모델이 인사하려다 end_call을 잘못 부르는 일이 잦아,
+        # 위키 도구가 있으면 그것만 준다. 도구가 하나도 없는 요청은 모델이 장문 사고로 흘러
+        # max_tokens에서 잘리므로 위키 도구가 없으면 기본 목록(end_call)을 두고 호출만 무시한다.
+        lookup_tools = [t for t in self.tools or [] if t["function"]["name"] not in HANGUP_TOOL_NAMES]
+        opening = {"tools": lookup_tools} if first and lookup_tools else {}
+        text, ended, meta, lookups, ignored = "", "", {}, [], 0
         for _ in range(2):  # 빈 응답이면 한 번 재시도 (바로 끊은 경우는 제외)
-            raw, ended, meta, used = self._generate()
+            raw, ended, meta, used = self._generate(**opening)
             lookups += used
             text = clean_utterance(raw)
+            if ended and (first or text.endswith("?")):
+                # 첫 발화나 질문으로 끝나는 발화는 작별이 아니다. 끊기 호출만 무시한다.
+                ended, ignored = "", ignored + 1
             if not ended and (n := MAX_SENTENCES.get(self.role)):  # 마무리 인사·사과는 자르지 않는다
                 limited = limit_sentences(text, n)
                 if limited != text:
@@ -261,7 +274,10 @@ class PhoneAgent:
             # 도구를 쓴 뒤 비었으면 다시 시도하지 않는다 (이미 늘어난 기록 위에서 호출이 불어난다).
             if text or ended or used:
                 break
+        if ignored:
+            meta["ignored_end_call"] = ignored
         if lookups:
             meta["wiki"] = lookups
         self.messages.append({"role": "assistant", "content": text})
+        self.spoken += 1
         return text, ended, meta

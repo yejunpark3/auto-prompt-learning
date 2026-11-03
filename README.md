@@ -80,10 +80,12 @@ call_id, started_at, ended_at, purpose, end_reason, num_turns,
 llm: {model, api_base, temperature, top_p, max_tokens, plan_max_tokens, extra_body},
 caller: {uuid: null, name, system_prompt([Plan] 포함), persona: null, plan: {text, latency_s, finish_reason, usage, reasoning} | null (비었거나 max_tokens에서 잘리면 null)}
 callee: {uuid, name, system_prompt, persona(원본 26개 필드)},
-turns: [{turn, speaker, name, text, latency_s, finish_reason, usage, reasoning}]
+turns: [{turn, speaker, name, text, latency_s, finish_reason, usage, reasoning, [ignored_end_call]}]
 ```
 
 `end_reason`: `hangup_by_caller`, `hangup_by_callee`, `spam_reported_by_callee`(수신자가 `report_spam`으로 신고하고 끊음), `max_turns`, `repetition_loop`(같은 화자가 직전 발화를 되풀이), `empty_response`, `error`.
+
+작은 모델이 `end_call`을 엉뚱하게 부르는 경우를 `PhoneAgent.respond`가 다듬는다. 각 화자의 첫 발화와 질문(`?`)으로 끝나는 발화에서 부른 `end_call`은 끊김으로 치지 않고 무시한다(턴 기록의 `ignored_end_call`에 횟수). 그 밖에는 말없이 `end_call`만 불러도 그대로 끊긴다(대사가 빈 `hangup` 턴). 도구가 하나도 없는 요청은 보내지 않는다(4B think 모델이 장문 사고로 흘러 `max_tokens`에서 잘려 대사가 빈다).
 
 ## 구조
 
