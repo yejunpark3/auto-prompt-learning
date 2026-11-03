@@ -206,6 +206,7 @@ dependencies = [
     { name = "mlx-vlm" },
     { name = "numpy" },
     { name = "pyarrow" },
+    { name = "python-dotenv" },
     { name = "pyyaml" },
 ]
 
@@ -218,6 +219,7 @@ requires-dist = [
     { name = "mlx-vlm", specifier = ">=0.7.11" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "pyarrow", specifier = ">=26.0.0" },
+    { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 

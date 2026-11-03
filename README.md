@@ -29,7 +29,7 @@ uv sync
 
 ## 로컬 서버
 
-기본 설정은 `optiq serve`로 띄운 로컬 서버(`http://127.0.0.1:8080/v1`)의 `mlx-community/Qwen3.5-9B-OptiQ-4bit:think`(thinking 켠 변형)를 쓴다. thinking 토큰도 `max_tokens`에 포함되므로 기본값을 2048로 두어 think 길이의 상한으로 쓴다(넘으면 대사가 비어 한 번 재시도한다. `--max-tokens`로 조절). `optiq serve`는 `sk-optiq-` 접두사의 키를 요구해서 자리표시 키 `sk-optiq-local`을 보낸다.
+모델 설정은 `.env`에서 읽는다(`cp .env.example .env`로 만든다. `LLM_MODEL`, `LLM_API_BASE`, `API_KEY`). `.env.example`의 기본값은 `optiq serve`로 띄운 로컬 서버(`http://127.0.0.1:8080/v1`)의 `mlx-community/Qwen3.5-9B-OptiQ-4bit:think`(thinking 켠 변형)이다. thinking 토큰도 `max_tokens`에 포함되므로 기본값을 2048로 두어 think 길이의 상한으로 쓴다(넘으면 대사가 비어 한 번 재시도한다. `--max-tokens`로 조절). `optiq serve`는 `sk-optiq-` 접두사의 키를 요구해서 `API_KEY`의 자리표시 키(`sk-optiq-local`)를 보낸다.
 
 로컬 서버(`api_base`를 줄 때)에는 요청마다 `top_k: 20`, `presence_penalty: 0.5`도 함께 보낸다(기본 `temperature 1.0`, `top_p 0.95`는 Qwen3.5 thinking 권장값. 권장값 1.5에서는 외국어 단어가 섞여 0.5로 낮췄다). `optiq serve`는 이 필드를 받아들이지만 실제로 반영하는지는 확인하지 않았다.
 

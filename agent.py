@@ -1,17 +1,24 @@
+import os
 import re
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 import litellm
+from dotenv import load_dotenv
 
 from prompts import END_CALL_NAME, HANGUP_TOOL_NAMES, with_plan
 
-# 로컬에서 `optiq serve`로 띄워 둔 9B 서버.
-DEFAULT_MODEL = "openai/mlx-community/Qwen3.5-9B-OptiQ-4bit:think"
-DEFAULT_API_BASE = "http://127.0.0.1:8080/v1"
-# optiq serve는 'sk-optiq-' 접두사의 키를 요구한다. mlx_lm.server는 키를 검사하지 않는다.
-LOCAL_API_KEY = "sk-optiq-local"
+# 실행 위치(cwd)와 무관하게 프로젝트 루트의 .env를 읽는다. 이미 설정된 환경변수는 덮어쓰지 않는다.
+load_dotenv(Path(__file__).parent / ".env")
+
+# 모델 설정은 .env에서 온다(.env.example 참고).
+DEFAULT_MODEL = os.environ.get("LLM_MODEL", "")
+# 비어 있으면 api_base 없이 호스팅 모델로 호출한다.
+DEFAULT_API_BASE = os.environ.get("LLM_API_BASE") or None
+# 로컬 서버용 자리표시 키. optiq serve는 'sk-optiq-' 접두사를 요구하고 mlx_lm.server는 검사하지 않는다.
+API_KEY = os.environ.get("API_KEY") or None
 
 # Qwen3.5 thinking 모드 권장 샘플링 (temperature 1.0, top_p 0.95, top_k 20,
 # presence_penalty 1.5). presence_penalty는 1.5에서 외국어 단어가 섞여 0.5로 낮췄다.
@@ -60,11 +67,13 @@ class LLMConfig:
     extra_body: dict | None = None
 
     def __post_init__(self):
+        if not self.model:
+            raise ValueError("모델이 지정되지 않았습니다. .env의 LLM_MODEL을 채우거나 --model을 주세요.")
         # 로컬 서버(api_base 지정)일 때만 자리표시 키와 MLX 전용 옵션을 쓴다.
         # 호스팅 모델은 api_key=None으로 두어 litellm이 환경변수 키를 쓰게 한다.
         if self.api_base:
             if self.api_key is None:
-                self.api_key = LOCAL_API_KEY
+                self.api_key = API_KEY
             if self.extra_body is None:
                 self.extra_body = dict(_MLX_EXTRA_BODY)
 

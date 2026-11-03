@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Local model settings (copy from .env.example)
+.env
+
 # Agent Workspace
 agent_workspace/
 
