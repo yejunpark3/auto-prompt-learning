@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import time
@@ -19,6 +20,8 @@ DEFAULT_MODEL = os.environ.get("LLM_MODEL", "")
 DEFAULT_API_BASE = os.environ.get("LLM_API_BASE") or None
 # 로컬 서버용 자리표시 키. optiq serve는 'sk-optiq-' 접두사를 요구하고 mlx_lm.server는 검사하지 않는다.
 API_KEY = os.environ.get("API_KEY") or None
+# 비어 있으면 Qwen3.5 권장값 1.0. 다른 모델은 .env의 LLM_TEMPERATURE로 낮춘다.
+DEFAULT_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE") or 1.0)
 
 # Qwen3.5 thinking 모드 권장 샘플링 (temperature 1.0, top_p 0.95, top_k 20,
 # presence_penalty 1.5). presence_penalty는 1.5에서 외국어 단어가 섞여 0.5로 낮췄다.
@@ -26,6 +29,8 @@ API_KEY = os.environ.get("API_KEY") or None
 _MLX_EXTRA_BODY = {
     "top_k": 20,
     "presence_penalty": 0.5,
+    # .env의 LLM_EXTRA_BODY(JSON)로 덮어쓰거나 더한다. 예: {"presence_penalty": 0, "min_p": 0.05}
+    **json.loads(os.environ.get("LLM_EXTRA_BODY") or "{}"),
 }
 
 # max_tokens로 잘려 닫는 태그가 없는 <think> 블록도 끝까지 지운다.
@@ -49,6 +54,8 @@ MAX_TOOL_ROUNDS = 3
 # 학습자는 위키를 읽고 고치느라 도구를 더 많이 부른다.
 LEARN_TOOL_ROUNDS = 8
 MAX_TOOL_RESULT_CHARS = 3000
+# 이보다 짧은 계획은 계획이 아니다("user" 한 단어만 답한 적이 있다). 붙이지 않고 계획 없이 진행한다.
+MIN_PLAN_CHARS = 20
 _QUOTES = "\"'“”‘’「」"
 _DOUBLE_QUOTE_RE = re.compile("[\"“”「」]")
 
@@ -58,7 +65,7 @@ class LLMConfig:
     model: str = DEFAULT_MODEL
     api_base: str | None = DEFAULT_API_BASE
     api_key: str | None = None
-    temperature: float = 1.0
+    temperature: float = DEFAULT_TEMPERATURE
     top_p: float = 0.95
     # thinking 토큰도 포함되는 한도라 곧 think 최대 길이다. 넘으면 대사가 비어 한 번 재시도한다.
     max_tokens: int = 2048
@@ -118,7 +125,11 @@ def clean_utterance(text: str) -> str:
 
 
 _SENTENCE_END_RE = re.compile(r"(?<=[^\d\W][.!?。])\s+")
-MAX_SENTENCES = {"caller": 2, "callee": 2}
+# 한 발화의 최대 문장 수. .env의 CALLER_MAX_SENTENCES, CALLEE_MAX_SENTENCES로 바꿀 수 있다(기본 2).
+MAX_SENTENCES = {
+    "caller": int(os.environ.get("CALLER_MAX_SENTENCES") or 2),
+    "callee": int(os.environ.get("CALLEE_MAX_SENTENCES") or 2),
+}
 
 
 def limit_sentences(text: str, n: int) -> str:
@@ -135,6 +146,8 @@ class PhoneAgent:
     tools: list[dict] | None = None
     # (이름, 인자)를 받아 결과 문자열을 돌려주는 도구 실행기. end_call 외의 도구 호출을 처리한다.
     tool_runner: Callable[[str, str], str] | None = None
+    # 상대의 말(user 메시지) 앞에 붙이는 라벨. 예: "[낯선 사람] ". 모델이 상대를 도와줄 사용자로 여기지 않게 한다.
+    partner_label: str = ""
     messages: list[dict] = field(init=False)
     # 이 통화에서 이 에이전트가 모델로 만든 발화 수. 수신자의 고정 인사는 세지 않는다.
     spoken: int = field(init=False, default=0)
@@ -162,6 +175,15 @@ class PhoneAgent:
         t0 = time.perf_counter()
         resp = litellm.completion(**kwargs)
         message = resp.choices[0].message
+        # 서버가 생성 엔진 오류를 빈 응답(토큰 0)으로 돌려주는 경우가 있다. 모델의 빈 응답으로
+        # 기록하지 않고 오류로 올려서 통화가 `error`로 끝나게 한다(리뷰·학습에서 빠진다).
+        if (
+            resp.usage
+            and resp.usage.completion_tokens == 0
+            and not message.content
+            and not message.tool_calls
+        ):
+            raise RuntimeError("서버가 빈 응답(완성 토큰 0)을 돌려줬습니다")
         meta = {
             "latency_s": round(time.perf_counter() - t0, 2),
             "finish_reason": resp.choices[0].finish_reason,
@@ -200,7 +222,7 @@ class PhoneAgent:
             final_tools=[],
         )
         text = _strip_think(raw).strip()
-        if not text or meta["finish_reason"] == "length":
+        if len(text) < MIN_PLAN_CHARS or meta["finish_reason"] == "length":
             return None
         self.system_prompt = with_plan(self.system_prompt, text)
         self.messages[0]["content"] = self.system_prompt
@@ -260,7 +282,7 @@ class PhoneAgent:
         return raw, ended, meta, lookups
 
     def respond(self, incoming: str) -> tuple[str, str, dict]:
-        self.messages.append({"role": "user", "content": incoming})
+        self.messages.append({"role": "user", "content": f"{self.partner_label}{incoming}"})
         first = self.spoken == 0
         # 첫 발화는 끊기일 수 없다. 작은 모델이 인사하려다 end_call을 잘못 부르는 일이 잦아,
         # 위키 도구가 있으면 그것만 준다. 도구가 하나도 없는 요청은 모델이 장문 사고로 흘러

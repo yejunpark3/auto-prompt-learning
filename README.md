@@ -31,7 +31,9 @@ uv sync
 
 모델 설정은 `.env`에서 읽는다(`cp .env.example .env`로 만든다. `LLM_MODEL`, `LLM_API_BASE`, `API_KEY`). `.env.example`의 기본값은 `optiq serve`로 띄운 로컬 서버(`http://127.0.0.1:8080/v1`)의 `mlx-community/Qwen3.5-9B-OptiQ-4bit:think`(thinking 켠 변형)이다. thinking 토큰도 `max_tokens`에 포함되므로 기본값을 2048로 두어 think 길이의 상한으로 쓴다(넘으면 대사가 비어 한 번 재시도한다. `--max-tokens`로 조절). `optiq serve`는 `sk-optiq-` 접두사의 키를 요구해서 `API_KEY`의 자리표시 키(`sk-optiq-local`)를 보낸다.
 
-로컬 서버(`api_base`를 줄 때)에는 요청마다 `top_k: 20`, `presence_penalty: 0.5`도 함께 보낸다(기본 `temperature 1.0`, `top_p 0.95`는 Qwen3.5 thinking 권장값. 권장값 1.5에서는 외국어 단어가 섞여 0.5로 낮췄다). `optiq serve`는 이 필드를 받아들이지만 실제로 반영하는지는 확인하지 않았다.
+로컬 서버(`api_base`를 줄 때)에는 요청마다 `top_k: 20`, `presence_penalty: 0.5`도 함께 보낸다(기본 `temperature 1.0`, `top_p 0.95`는 Qwen3.5 thinking 권장값. 권장값 1.5에서는 외국어 단어가 섞여 0.5로 낮췄다. temperature는 `.env`의 `LLM_TEMPERATURE`나 `--temperature`로 바꾼다. DLM-2.0-14B에서는 1.0일 때 비문과 같은 말 되풀이가 잦아 0.6이 나았다). `optiq serve`는 이 필드를 받아들이지만 실제로 반영하는지는 확인하지 않았다.
+
+그 밖의 선택 설정은 모두 `.env`에서 바꾼다(자세한 설명과 근거는 `.env.example`): `LLM_EXTRA_BODY`(서버 전용 샘플링 필드 덮어쓰기), `CALLER_MAX_SENTENCES`·`CALLEE_MAX_SENTENCES`(발화 문장 수 제한, 기본 2), `PERSONA_BACKGROUND`·`PERSONA_BACKGROUND_FIELDS`(수신자 프롬프트에 넣을 페르소나 서술 필드, 기본은 전부), `LOOP_NUDGE`(같은 말이 되풀이될 때 한 번 끝내라는 힌트를 주는 기능, 기본 켜짐), `CALLEE_PARTNER_LABEL`(수신자에게 가는 상대 말 앞에 붙이는 라벨, 기본 꺼짐). 서버가 빈 응답(완성 토큰 0)을 돌려주면 통화는 `error`로 끝나고, 서버 오류 통화가 연속 3개면 배치를 멈춘다.
 
 통화 종료에 tool calling을 쓴다. `mlx_lm.server`는 `tools`를 `tool_calls`로 파싱해 준다. 서버가 파싱하지 않고 content에 `<tool_call>` 블록을 남기면 그 블록에서 `end_call`을 찾고 발화에서는 지운다.
 

@@ -57,6 +57,7 @@ def main() -> None:
         plan_max_tokens=args.plan_max_tokens,
     )
 
+    errors_in_row = 0
     for i in range(args.n):
         # uuid를 지정한 경우 첫 통화에만 쓰고, 이후 통화는 새로 뽑는다.
         callee_p = (
@@ -86,6 +87,12 @@ def main() -> None:
                 print(f"[경고] 통화 리뷰 실패: {type(e).__name__}: {e}", flush=True)
         path = save_record(record, args.out)
         print(f"\n종료: {record['end_reason']} ({record['num_turns']}턴) → {path}")
+
+        # 서버가 죽었는데 남은 통화를 계속 돌리면 오류 기록만 쌓인다. 연속 3통화가 오류면 멈춘다.
+        errors_in_row = errors_in_row + 1 if record["end_reason"] == "error" else 0
+        if errors_in_row >= 3:
+            print(f"[중단] 서버 오류로 끊긴 통화가 {errors_in_row}통화 연속입니다. 남은 통화를 건너뜁니다.", flush=True)
+            break
 
         if args.learn_every and (record.get("review") or {}).get("notes"):
             try:

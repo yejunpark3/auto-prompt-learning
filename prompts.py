@@ -26,6 +26,8 @@ HANGUP_TOOL_NAMES = (END_CALL_NAME,)
 RING_CUE = "(모르는 번호로 전화가 왔다)"
 CALLEE_GREETING = "여보세요?"
 WRAP_UP_HINT ="(통화가 길어지고 있습니다. 자연스럽게 마무리하세요.)"
+# 같은 화자가 직전 발화와 비슷한 말을 되풀이하면 그 화자의 다음 차례에 한 번 붙인다(LOOP_NUDGE=1).
+LOOP_HINT = "(같은 말이 되풀이되고 있습니다. 더 할 말이 없으면 end_call로 통화를 끝내세요.)"
 
 PLAN_REQUEST = "통화를 걸기 전이다. [Goal]을 이루기 위한 통화 계획을 세워라. {wiki}대사는 쓰지 말고 계획만."
 PLAN_WIKI_HINT = "필요하면 위키 도구로 관련 지식을 찾아 근거로 삼아라. "
@@ -57,8 +59,9 @@ CALLEE_STYLE = (
 )
 
 
-def callee_prompt(profile: str) -> str:
-    return f"[Persona]\n{profile}\n{CHANNEL}\n[Role]\nCALLEE\n{CALLEE_STYLE}"
+def callee_prompt(profile: str, background: str = "") -> str:
+    prompt = f"[Persona]\n{profile}\n{CHANNEL}\n[Role]\nCALLEE\n{CALLEE_STYLE}"
+    return f"{prompt}\n[Background]\n{background}" if background else prompt
 
 
 def with_plan(system_prompt: str, plan: str) -> str:

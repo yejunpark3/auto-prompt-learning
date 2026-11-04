@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import uuid
 from datetime import datetime
@@ -15,6 +16,7 @@ from prompts import (
     PLAN_WIKI_HINT,
     # REPORT_SPAM_NAME,
     # REPORT_SPAM_TOOL,
+    LOOP_HINT,
     RING_CUE,
     WRAP_UP_HINT,
     callee_prompt,
@@ -32,12 +34,20 @@ REPEAT_MIN_CHARS = 10
 _LABELS = {"caller": "발신", "callee": "수신"}
 
 
-def _is_repeat(prev: str, text: str) -> bool:
+# LOOP_NUDGE=1이면 이 비율 이상으로 닮은 되풀이에 한 번 힌트를 준다(강제 종료는 REPEAT_RATIO).
+NUDGE_RATIO = 0.6
+
+
+def _similar(prev: str, text: str, ratio: float) -> bool:
     norm = lambda s: re.sub(r"[\s.,!?~]+", "", s)
     prev, text = norm(prev), norm(text)
     if min(len(prev), len(text)) < REPEAT_MIN_CHARS:
         return False
-    return SequenceMatcher(None, prev, text).ratio() >= REPEAT_RATIO
+    return SequenceMatcher(None, prev, text).ratio() >= ratio
+
+
+def _is_repeat(prev: str, text: str) -> bool:
+    return _similar(prev, text, REPEAT_RATIO)
 
 
 def _wiki_ready() -> bool:
@@ -73,8 +83,12 @@ def build_agents(
         role="callee",
         persona=callee_persona,
         name=callee_name,
-        system_prompt=callee_prompt(personas.render_profile(callee_persona)),
+        system_prompt=callee_prompt(
+            personas.render_profile(callee_persona), personas.render_background(callee_persona)
+        ),
         llm=llm,
+        # .env의 CALLEE_PARTNER_LABEL=낯선 사람 → 발신자의 말마다 "[낯선 사람] "을 앞에 붙인다.
+        partner_label=_label(os.environ.get("CALLEE_PARTNER_LABEL", "")),
         tools=[END_CALL_TOOL],  # REPORT_SPAM_TOOL 비활성화
         # tools=[END_CALL_TOOL, REPORT_SPAM_TOOL],
     )
@@ -113,7 +127,7 @@ def simulate_call(
                 on_plan(plan)
             else:
                 print(
-                    "[경고] 계획이 비었거나 plan_max_tokens에서 잘려 계획 없이 진행합니다",
+                    "[경고] 계획이 비었거나 너무 짧거나 plan_max_tokens에서 잘려 계획 없이 진행합니다",
                     flush=True,
                 )
         except Exception as e:
@@ -130,9 +144,16 @@ def simulate_call(
     turns.append(greeting)
     on_turn(greeting)
     speaker, incoming = caller, CALLEE_GREETING
+    loop_nudge = os.environ.get("LOOP_NUDGE", "1") != "0"  # 기본 켜짐. 끄려면 LOOP_NUDGE=0
+    nudged: set[str] = set()  # 다음 차례에 되풀이 힌트를 받을 화자
+    warned: set[str] = set()  # 90% 이상 되풀이로 이미 한 번 경고받은 화자
     while len(turns) < max_turns:
         if max_turns - len(turns) <= WRAP_UP_REMAINING and len(turns) > 0:
             incoming = f"{incoming} {WRAP_UP_HINT}"
+        hinted = speaker.role in nudged
+        if hinted:
+            incoming = f"{incoming} {LOOP_HINT}"
+            nudged.discard(speaker.role)
         try:
             text, hung_up, meta = speaker.respond(incoming)
         except Exception as e:  # litellm 연결/응답 오류
@@ -148,6 +169,8 @@ def simulate_call(
                 "text": text, **meta}
         if hung_up:
             turn["hangup"] = True
+        if hinted:
+            turn["loop_hint"] = True
         # if hung_up == REPORT_SPAM_NAME:
         #     turn["spam_report"] = True
         turns.append(turn)
@@ -167,8 +190,15 @@ def simulate_call(
             None,
         )
         if prev and _is_repeat(prev, text):
-            end_reason = "repetition_loop"
-            break
+            if loop_nudge and speaker.role not in warned:
+                # 첫 되풀이는 바로 끊지 않고 그 화자에게 힌트를 한 번 준다. 힌트 뒤에도 되풀이하면 끝낸다.
+                warned.add(speaker.role)
+                nudged.add(speaker.role)
+            else:
+                end_reason = "repetition_loop"
+                break
+        elif loop_nudge and prev and _similar(prev, text, NUDGE_RATIO):
+            nudged.add(speaker.role)
         speaker = caller if speaker is callee else callee
         incoming = text
 
@@ -186,13 +216,21 @@ def simulate_call(
     }
 
 
+def _label(text: str) -> str:
+    text = text.strip()
+    return f"[{text}] " if text else ""
+
+
 def _agent_record(agent: PhoneAgent) -> dict:
-    return {
+    record = {
         "uuid": agent.persona["uuid"] if agent.persona else None,
         "name": agent.name,
         "system_prompt": agent.system_prompt,
         "persona": agent.persona,
     }
+    if agent.partner_label:
+        record["partner_label"] = agent.partner_label
+    return record
 
 
 def save_record(record: dict, out_dir: str = DEFAULT_OUT_DIR) -> Path:
