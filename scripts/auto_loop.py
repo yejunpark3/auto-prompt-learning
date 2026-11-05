@@ -1,5 +1,5 @@
 """배치 → 오류 재실행 → 지표 → 자동 게이트(롤백) → 종료 판정을 자동 반복한다.
-사용: uv run scripts/auto_loop.py --rounds 5 [--baseline] [--seed 1] [--learn-every 20]
+사용: uv run scripts/auto_loop.py --purpose "..." --rounds 5 [--baseline] [--seed 1] [--learn-every 20]
 코드·프롬프트 직접 변경과 정독(자연스러움 판단)은 하지 않는다. 회차마다 tmp/loop_log.md에 지표를 남긴다."""
 import argparse
 import json
@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-PURPOSE = "월 9,900원 실손보험 가입 권유"
+PURPOSE = ""  # --purpose로 받는다(시나리오는 코드가 아니라 system.md·wiki·--purpose로 정한다)
 HISTORY = Path("agent_workspace/conversation_history")
 ERRORS = Path("agent_workspace/errors")
 LEARN_DIR = Path("agent_workspace/learning")
@@ -133,6 +133,7 @@ def save_state(s: dict) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser()
+    p.add_argument("--purpose", required=True, help="통화 목적(시나리오)")
     p.add_argument("--rounds", type=int, default=1, help="일반 회차 수")
     p.add_argument("--baseline", action="store_true", help="학습 없는 기준선 배치만 돈다")
     p.add_argument("--seed", type=int, default=1)
@@ -140,6 +141,8 @@ def main() -> None:
     p.add_argument("--learn-every", type=int, help="기본값은 n. n보다 크면 학습하지 않는다")
     p.add_argument("--no-gate", action="store_true", help="자동 롤백 끄기")
     args = p.parse_args()
+    global PURPOSE
+    PURPOSE = args.purpose
     learn_every = args.learn_every or args.n
     learns = learn_every <= args.n
 
