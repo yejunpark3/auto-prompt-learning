@@ -185,9 +185,11 @@ def speaker_score(scores: list[int], n_defects: int, ending_ok: bool) -> float |
                  - ENDING_W * (not ending_ok), 3)
 
 
-def score_call(record: dict, judge_llm: LLMConfig | None, judge: bool = True) -> dict:
+def score_call(record: dict, judge_llm: LLMConfig | None, judge: bool = True, check_fabrication: bool = True) -> dict:
     """{"version", "excluded": 사유|None, "complete": 심판·검사까지 돌렸는가, "caller": {...}, "callee": {...}, ...}.
-    judge=False면 결정적 결함만 센다(complete=False, s는 None)."""
+    judge=False면 결정적 결함만 센다(complete=False, s는 None).
+    check_fabrication=False면 지어내기 검사와 그 바닥값을 건너뛴다(GEPA처럼 성공만 보는 용도; 기본은 검사한다).
+    이때 result["fabrication"]은 {"skipped": True, "fabricated": False}이고 용건 없이 끊은 바닥값만 남는다."""
     result: dict = {"version": VERSION, "end_reason": record["end_reason"], "excluded": None, "complete": False,
                     "defects": {r: find_defects(record, r) for r in ROLES}}
     if record["end_reason"] in SKIP_ENDS:
@@ -204,7 +206,8 @@ def score_call(record: dict, judge_llm: LLMConfig | None, judge: bool = True) ->
     if review is None:
         result["excluded"] = "review_failed"
         return result
-    fab = fabrication.detect(record, judge_llm)
+    fab = fabrication.detect(record, judge_llm) if check_fabrication else \
+        {"numbers": [], "contacts": [], "claims": None, "fabricated": False, "skipped": True}
     if fab["fabricated"] is None:
         result["excluded"] = "fabrication_check_failed"
         result["fabrication"] = fab

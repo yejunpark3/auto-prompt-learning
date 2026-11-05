@@ -49,9 +49,15 @@ ID_CHARS = string.ascii_lowercase + string.digits
 class PromptLines:
     """system.md의 줄마다 무작위 ID를 붙여 학습자에게 보여 준다 (ID는 파일에 쓰지 않고 한 회차 동안만 유지)."""
 
-    def __init__(self, text: str):
-        self._used: set[str] = set()
-        self.rows = self._assign(text)
+    def __init__(self, text: str, rows: list[tuple[str, str]] | None = None, used: set[str] | None = None):
+        """rows를 주면 text 대신 그 (ID, 줄) 목록으로 시작한다(GEPA가 계보 전체에서 줄 ID를 유지할 때).
+        used를 주면 그 집합 객체를 그대로 공유해 새 ID가 겹치지 않게 한다(문서가 여러 개일 때 문서끼리 공유)."""
+        self._used: set[str] = used if used is not None else set()
+        if rows is None:
+            self.rows = self._assign(text)
+        else:
+            self._used.update(i for i, _ in rows)
+            self.rows = list(rows)
 
     def _new_id(self) -> str:
         while (i := "".join(secrets.choice(ID_CHARS) for _ in range(4))) in self._used or i.isalpha() or i.isdigit():

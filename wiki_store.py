@@ -4,9 +4,12 @@ import hashlib
 import json
 import re
 import sys
+import threading
 import unicodedata
+from contextlib import contextmanager
+from contextvars import ContextVar
 from difflib import SequenceMatcher
-from functools import cache
+from functools import cache, wraps
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +18,45 @@ WIKI_ROOT = Path(__file__).parent / "wiki"
 INDEX_DIR = WIKI_ROOT / ".index"
 READONLY_FILE = WIKI_ROOT / ".readonly"
 EMBED_MODEL = "mlx-community/embeddinggemma-2-bf16"
+
+# 위키 루트를 스레드(컨텍스트)별로 바꿀 수 있다. GEPA가 후보마다 다른 위키로 통화를 동시에 돌릴 때 쓴다.
+# 지정하지 않으면 위의 WIKI_ROOT·INDEX_DIR·READONLY_FILE를 그대로 쓰므로 기존 동작은 같다.
+# 주의: ContextVar는 새로 만든 스레드로 전파되지 않으므로, using_root는 그 일을 하는 스레드 안에서 열어야 한다.
+_ROOT_OVERRIDE: ContextVar[Path | None] = ContextVar("wiki_root", default=None)
+# 임베딩 모델(MLX)과 인덱스 파일은 동시에 쓰지 않는다. 같은 위키를 두 통화가 함께 검색해도 안전하게 한 번에 하나씩 돈다.
+_LOCK = threading.RLock()
+
+
+def _root() -> Path:
+    return _ROOT_OVERRIDE.get() or WIKI_ROOT
+
+
+def _index_dir() -> Path:
+    o = _ROOT_OVERRIDE.get()
+    return o / ".index" if o else INDEX_DIR
+
+
+def _readonly_file() -> Path:
+    o = _ROOT_OVERRIDE.get()
+    return o / ".readonly" if o else READONLY_FILE
+
+
+@contextmanager
+def using_root(path: str | Path):
+    """이 컨텍스트 안에서 위키 루트를 path로 바꾼다(읽기·검색·쓰기·읽기 전용 목록·인덱스 모두)."""
+    token = _ROOT_OVERRIDE.set(Path(path))
+    try:
+        yield
+    finally:
+        _ROOT_OVERRIDE.reset(token)
+
+
+def _locked(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _LOCK:
+            return fn(*args, **kwargs)
+    return wrapper
 
 QUERY_PREFIX = "task: search result | query: "
 DOC_PREFIX = "title: {title} | text: "
@@ -44,8 +86,8 @@ def _resolve(path: str) -> tuple[str, Path]:
         raise WikiError("경로가 비었습니다")
     if not rel.endswith(".md"):
         rel += ".md"
-    full = (WIKI_ROOT / rel).resolve()
-    root = WIKI_ROOT.resolve()
+    full = (_root() / rel).resolve()
+    root = _root().resolve()
     if not full.is_relative_to(root):
         raise WikiError(f"위키 밖의 경로입니다: {path}")
     parts = full.relative_to(root).parts
@@ -56,9 +98,10 @@ def _resolve(path: str) -> tuple[str, Path]:
 
 def readonly_patterns() -> list[str]:
     """`wiki/.readonly`의 glob 목록(한 줄에 하나, `#` 주석). 학습자가 고칠 수 없는 문서."""
-    if not READONLY_FILE.exists():
+    path = _readonly_file()
+    if not path.exists():
         return []
-    lines = (l.strip() for l in READONLY_FILE.read_text(encoding="utf-8").splitlines())
+    lines = (l.strip() for l in path.read_text(encoding="utf-8").splitlines())
     return [_nfc(l) for l in lines if l and not l.startswith("#")]
 
 
@@ -71,8 +114,9 @@ def is_readonly(rel: str) -> bool:
 
 def _all_files() -> dict[str, Path]:
     files = {}
-    for p in sorted(WIKI_ROOT.rglob("*.md")):
-        rel = p.relative_to(WIKI_ROOT)
+    root = _root()
+    for p in sorted(root.rglob("*.md")):
+        rel = p.relative_to(root)
         if any(part.startswith(".") for part in rel.parts):
             continue
         files[_nfc(rel.as_posix())] = p
@@ -162,7 +206,7 @@ def _sha(path: Path) -> str:
 
 
 def _load_index() -> tuple[dict, np.ndarray]:
-    meta_path, emb_path = INDEX_DIR / "meta.json", INDEX_DIR / "embeddings.npy"
+    meta_path, emb_path = _index_dir() / "meta.json", _index_dir() / "embeddings.npy"
     empty = {"model": EMBED_MODEL, "files": {}, "chunks": []}
     if not (meta_path.exists() and emb_path.exists()):
         return empty, np.zeros((0, 768), np.float32)
@@ -177,13 +221,15 @@ def _load_index() -> tuple[dict, np.ndarray]:
 
 
 def _save_index(meta: dict, emb: np.ndarray) -> None:
-    INDEX_DIR.mkdir(parents=True, exist_ok=True)
-    np.save(INDEX_DIR / "embeddings.npy", emb)
-    (INDEX_DIR / "meta.json").write_text(
+    index = _index_dir()
+    index.mkdir(parents=True, exist_ok=True)
+    np.save(index / "embeddings.npy", emb)
+    (index / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False), encoding="utf-8"
     )
 
 
+@_locked
 def sync(full: bool = False) -> int:
     """바뀐·새 파일만 다시 임베딩하고 사라진 파일의 청크를 지운다. 다시 계산한 파일 수를 돌려준다."""
     meta, emb = ({"model": EMBED_MODEL, "files": {}, "chunks": []}, np.zeros((0, 768), np.float32)) \
@@ -211,6 +257,7 @@ def sync(full: bool = False) -> int:
     return len(stale)
 
 
+@_locked
 def warm() -> int:
     """통화 전에 인덱스를 맞추고 임베딩 모델을 올려 둔다. 문서가 없으면 아무것도 하지 않는다."""
     if not _all_files():
@@ -223,6 +270,7 @@ def warm() -> int:
 # ---------- 검색 ----------
 
 
+@_locked
 def search(query: str, k: int = 5) -> list[dict]:
     """임베딩 검색. 파일마다 가장 점수가 높은 청크 하나만 남긴다."""
     sync()
@@ -319,7 +367,7 @@ def delete(path: str) -> str:
     full.unlink()
     # 빈 하위 폴더는 치운다 (위키 루트는 남김).
     parent = full.parent
-    while parent != WIKI_ROOT.resolve() and not any(parent.iterdir()):
+    while parent != _root().resolve() and not any(parent.iterdir()):
         parent.rmdir()
         parent = parent.parent
     sync()
