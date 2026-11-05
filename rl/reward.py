@@ -29,7 +29,7 @@ from prompts import (
 )
 from rl import fabrication, judge_config
 
-VERSION = 2  # 2: 심판 요청문에 번호 붙은 발화 수(n)를 명시(점수 개수 불일치로 판정이 비는 것을 줄임)
+VERSION = 3  # 2: 심판 요청문에 번호 붙은 발화 수(n)를 명시(점수 개수 불일치 감소). 3: 매기기 전에 되풀이·따라 하기를 먼저 확인하라는 지시(0점 재현율 10%→27%)
 FLOOR = -1.0
 DEFECT_W = 0.2     # 발화당 결함 한 건의 벌점(결함 수/발화 수에 곱한다)
 ENDING_W = 0.3     # 끝맺음이 부자연스러울 때의 벌점
