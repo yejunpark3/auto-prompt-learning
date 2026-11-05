@@ -41,6 +41,19 @@ def _content_calls(content: str) -> list[dict]:
     return calls
 
 
+def tool_calls_of(content: str, meta: dict) -> list[dict]:
+    """응답에서 도구 호출을 모은다: 서버가 파싱한 것 + content에 남은 `<tool_call>` 블록.
+
+    둘 다 없고 content도 비었는데 reasoning 안에 `<tool_call>` 블록이 있으면 그것을 쓴다. 실서버 관찰: 모델이 `</think>` 없이
+    도구 호출을 쓰면 reasoning 파서(deepseek_r1)가 출력 전체를 reasoning으로 넘겨 content와 tool_calls가 모두 비는데, 호출 자체는
+    온전했다(리뷰어가 통화의 약 1/3에서 실패). content가 있으면 reasoning은 보지 않는다: 사고 안에서 언급만 한 호출을 세지 않으려는
+    agent.py의 원칙을 지킨다(모델의 실제 답이 아예 없을 때만 쓴다)."""
+    calls = [*meta["tool_calls"], *_content_calls(content)]
+    if not calls and not _strip_think(content).strip():
+        calls = _content_calls(meta.get("reasoning") or "")
+    return calls
+
+
 def _parse_review(calls: list[dict]) -> tuple[bool, str, int | None, str] | None:
     """submit_review 호출의 인자에서 (achieved, notes, stage, evidence)를 읽는다. achieved·notes 타입이 맞지 않으면 None.
 
@@ -118,7 +131,7 @@ def review_call(record: dict, llm: LLMConfig, attempts: int = 2) -> dict | None:
             tools=[SUBMIT_REVIEW_TOOL],
         )
         latency += meta["latency_s"]
-        parsed = None if meta["finish_reason"] == "length" else _parse_review([*meta["tool_calls"], *_content_calls(content)])
+        parsed = None if meta["finish_reason"] == "length" else _parse_review(tool_calls_of(content, meta))
         if parsed or spam:
             break
     if spam:

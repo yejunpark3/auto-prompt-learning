@@ -167,7 +167,7 @@ def judge_call(record: dict, llm: LLMConfig, attempts: int = 2) -> dict | None:
         latency += meta["latency_s"]
         if meta["finish_reason"] == "length":
             continue
-        parsed = _parse_judge([*meta["tool_calls"], *reviewer._content_calls(content)], len(utts))
+        parsed = _parse_judge(reviewer.tool_calls_of(content, meta), len(utts))
         if parsed:
             scores, ending, notes = parsed
             return {"scores": {n: s for (n, _, _), s in zip(utts, scores)}, "ending_ok": ending,

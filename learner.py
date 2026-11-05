@@ -221,7 +221,7 @@ def _fact_check(text: str, source: str, llm: LLMConfig, attempts: int = 2, decoy
             max_tokens=min(llm.plan_max_tokens, FACT_CHECK_MAX_TOKENS), tools=[FACT_CHECK_TOOL])
         if meta["finish_reason"] == "length":
             continue
-        for c in [*meta["tool_calls"], *reviewer._content_calls(content)]:
+        for c in reviewer.tool_calls_of(content, meta):
             if c["name"] != FACT_CHECK_NAME:
                 continue
             try:

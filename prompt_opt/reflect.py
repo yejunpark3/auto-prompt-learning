@@ -174,7 +174,10 @@ def reflect(parent: Candidate, calls: list[dict], *, cid: str, iteration: int, t
         pl = docs[doc]
         rows_before, size_before = list(pl.rows), chars(doc)
         err = pl.edit(action, lid, new)
-        if err is None and doc == SYSTEM and action != "delete" and guard and (g := guard(new)):
+        # 가드는 편집에 실제로 들어간 글을 본다: PromptLines.edit이 줄 머리의 [ID] 표시를 지우므로 같은 정규화를 거친다.
+        # 안 그러면 학습자가 붙인 ID(항상 숫자가 섞인다)가 "근거 없는 숫자"로 걸려, 학습자가 줄 ID 형식 문제로 오해하고 헛돈다(실서버 관찰).
+        clean = "\n".join(learner.LINE_TAG.sub("", l) for l in new.strip().splitlines())
+        if err is None and doc == SYSTEM and action != "delete" and guard and (g := guard(clean)):
             err = f"오류: {g}"
         if err is None and (e := too_big(doc, size_before)):
             err = f"오류: {e}"
