@@ -29,7 +29,7 @@ from prompts import (
 )
 from rl import fabrication, judge_config
 
-VERSION = 1
+VERSION = 2  # 2: 심판 요청문에 번호 붙은 발화 수(n)를 명시(점수 개수 불일치로 판정이 비는 것을 줄임)
 FLOOR = -1.0
 DEFECT_W = 0.2     # 발화당 결함 한 건의 벌점(결함 수/발화 수에 곱한다)
 ENDING_W = 0.3     # 끝맺음이 부자연스러울 때의 벌점
@@ -157,7 +157,7 @@ def judge_call(record: dict, llm: LLMConfig, attempts: int = 2) -> dict | None:
     if not utts:
         return {"scores": {}, "ending_ok": False, "notes": "", "latency_s": 0.0}
     agent = PhoneAgent("judge", None, "심판", NATURAL_JUDGE_SYSTEM, llm)
-    request = NATURAL_JUDGE_REQUEST.format(end_reason=record["end_reason"], transcript=_transcript(record, utts))
+    request = NATURAL_JUDGE_REQUEST.format(end_reason=record["end_reason"], transcript=_transcript(record, utts), n=len(utts))
     latency = 0.0
     for _ in range(attempts):
         content, _, meta = agent._complete(
