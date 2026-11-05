@@ -230,6 +230,9 @@ def _agent_record(agent: PhoneAgent) -> dict:
     }
     if agent.partner_label:
         record["partner_label"] = agent.partner_label
+    if agent.traj:  # TRAJ_LOG=1: 가중치 학습용으로 모델 호출마다의 실제 입력·출력과 그때 쓴 도구 스키마를 남긴다
+        record["tools"] = agent.tools
+        record["traj"] = agent.traj
     return record
 
 

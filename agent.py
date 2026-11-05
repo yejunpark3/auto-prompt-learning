@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -58,6 +59,8 @@ MAX_TOOL_RESULT_CHARS = 3000
 MIN_PLAN_CHARS = 20
 _QUOTES = "\"'“”‘’「」"
 _DOUBLE_QUOTE_RE = re.compile("[\"“”「」]")
+# .env의 TRAJ_LOG=1이면 모델 호출마다 실제 입력·출력을 PhoneAgent.traj에 남긴다(가중치 학습용 데이터).
+TRAJ_LOG = os.environ.get("TRAJ_LOG", "0") == "1"
 
 
 @dataclass
@@ -151,9 +154,28 @@ class PhoneAgent:
     messages: list[dict] = field(init=False)
     # 이 통화에서 이 에이전트가 모델로 만든 발화 수. 수신자의 고정 인사는 세지 않는다.
     spoken: int = field(init=False, default=0)
+    # TRAJ_LOG=1일 때 모델 호출마다 쌓는 기록. kind는 "plan"(통화 전 계획)과 "turn"(발화), idx는 turn일 때 self.spoken.
+    traj: list[dict] = field(init=False, default_factory=list)
+    _kind: str = field(init=False, default="turn", repr=False)
 
     def __post_init__(self):
         self.messages = [{"role": "system", "content": self.system_prompt}]
+
+    def _log_call(self, messages: list[dict], tools: list[dict] | None, content: str, ended: str, meta: dict) -> None:
+        """호출 시점의 messages를 복사해 둔다(이후 messages가 늘어나므로). 통화 발화(turn)는 시스템 프롬프트가
+        기록의 system_prompt와 같아 생략하고, 계획(plan)은 [Plan]이 붙기 전 프롬프트라 따로 남긴다."""
+        entry = {
+            "kind": self._kind,
+            "idx": self.spoken if self._kind == "turn" else 0,
+            "messages": copy.deepcopy(messages if self._kind == "plan" else messages[1:]),
+            "tools": [t["function"]["name"] for t in tools or []],
+            "raw": content,
+            "ended": ended,
+            "reasoning": meta["reasoning"],
+            "tool_calls": meta["tool_calls"],
+            "finish_reason": meta["finish_reason"],
+        }
+        self.traj.append(entry)
 
     def _complete(
         self, messages=None, max_tokens=None, tools="default"
@@ -200,6 +222,8 @@ class PhoneAgent:
         # 서버가 tool_calls로 파싱하지 못하고 content에 <tool_call> 원문을 남기는 경우도 본다.
         # thinking 안에서 언급만 한 호출은 세지 않도록 thinking을 먼저 걷어낸다.
         ended = _hangup_name(message.tool_calls, content)
+        if TRAJ_LOG:
+            self._log_call(kwargs["messages"], kwargs.get("tools"), content, ended, meta)
         return content, ended, meta
 
     def plan(self, request: str) -> dict | None:
@@ -215,12 +239,16 @@ class PhoneAgent:
         plan_tools = [
             t for t in self.tools or [] if t["function"]["name"] not in HANGUP_TOOL_NAMES
         ]
-        raw, _, meta, lookups = self._generate(
-            messages=messages,
-            max_tokens=self.llm.plan_max_tokens,
-            tools=plan_tools,
-            final_tools=[],
-        )
+        self._kind = "plan"
+        try:
+            raw, _, meta, lookups = self._generate(
+                messages=messages,
+                max_tokens=self.llm.plan_max_tokens,
+                tools=plan_tools,
+                final_tools=[],
+            )
+        finally:
+            self._kind = "turn"
         text = _strip_think(raw).strip()
         if len(text) < MIN_PLAN_CHARS or meta["finish_reason"] == "length":
             return None

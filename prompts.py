@@ -64,8 +64,16 @@ def callee_prompt(profile: str, background: str = "") -> str:
     return f"{prompt}\n[Background]\n{background}" if background else prompt
 
 
+PLAN_MARK = "\n[Plan] (내부 메모. 대사로 읽지 말 것)\n"
+
+
 def with_plan(system_prompt: str, plan: str) -> str:
-    return f"{system_prompt}\n[Plan] (내부 메모. 대사로 읽지 말 것)\n{plan}"
+    return f"{system_prompt}{PLAN_MARK}{plan}"
+
+
+def without_plan(system_prompt: str) -> str:
+    """with_plan이 붙인 [Plan]을 뗀다. 계획은 모델이 쓴 글이라 사실의 근거가 아니다."""
+    return system_prompt.split(PLAN_MARK, 1)[0]
 
 
 def load_caller_profile(path: str = SYSTEM_PROMPT_PATH) -> str:
@@ -166,6 +174,63 @@ FACT_CHECK_REQUEST = (
 )
 
 
-# LEARN_REQUEST의 {wiki_rule}: 학습자의 위키 쓰기를 켰는지(learner.LEARN_WIKI_WRITES)에 따라 다른 문장을 넣는다.
+# 강화학습(rl/)의 지어내기 검사. FACT_CHECK_REQUEST보다 넓게, 의심되면 지적하게 한다(놓치는 것이 오지적보다 나쁘다:
+# 보상을 최대화하는 정책이 검사기의 빈틈을 배우기 때문). learner._fact_check_vote(combine="any")와 함께 쓴다.
+STRICT_CLAIM_CHECK_REQUEST = (
+    "[근거 문서]\n{source}\n\n[검사할 글]\n{text}\n\n"
+    "검사할 글은 전화 발신자가 실제로 한 말이다. 근거 문서에 없는데 사실처럼 말한 문장을 모두 찾아 submit_fact_check로 제출하라. "
+    "[통화 기록]에서 상대([수신])가 먼저 한 말을 발신자가 되받는 것은 근거 있는 말이다. 하지만 발신자의 말보다 뒤에 나온 상대의 말"
+    "(되묻거나 따라 말한 것)은 그 앞선 발신자 말의 근거가 아니다. "
+    "의심스러우면 넣어라. 찾을 것: "
+    "(1) 구체적 수치·기간·횟수·날짜·조건·절차·소속·자격, "
+    "(2) 효과나 결과를 보장하거나 약속하는 단정, "
+    "(3) 상대나 제3자에 대해 근거 없이 단정한 말(상대의 사정·상황·행동·가족·직업), "
+    "(4) 근거 없이 내세운 권위·인기·추천·실적·기한 압박. "
+    "질문, 인사, 사과, 맞장구, 상대가 한 말을 그대로 되받는 말, 근거 문서에 있는 내용을 옮기거나 줄인 말, "
+    "사실을 말하는 것이 아닌 정중한 표현(예: 바쁘신데 죄송합니다)은 넣지 않는다."
+)
+
+
+# 통화 자연스러움 심판(rl/reward.py). 발화마다 0~2점과 끝맺음을 매긴다. 통화 환경(영업·설문·안내 등)을 가정하지 않는다.
+SUBMIT_NATURALNESS_NAME = "submit_naturalness"
+SUBMIT_NATURALNESS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": SUBMIT_NATURALNESS_NAME,
+        "description": "발화별 자연스러움 점수를 제출한다",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scores": {
+                    "type": "array",
+                    "items": {"type": "integer", "enum": [0, 1, 2]},
+                    "description": "번호가 붙은 발화를 번호 순서대로 한 개씩, 발화 수와 같은 길이의 점수 배열. 0=부자연스럽다, 1=어색하지만 말은 된다, 2=자연스럽다",
+                },
+                "ending_ok": {
+                    "type": "boolean",
+                    "description": "통화의 끝맺음이 자연스러운가. 질문에 답하지 않고 갑자기 끊거나, 작별 인사를 되풀이하거나, 용건 없이 인사 직후 끊으면 false",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "0점을 준 발화의 번호와 이유를 한 줄씩. 없으면 빈 문자열",
+                },
+            },
+            "required": ["scores", "ending_ok", "notes"],
+        },
+    },
+}
+
+NATURAL_JUDGE_SYSTEM = "한국어 전화 통화 기록을 읽고, 사람이 실제 전화에서 할 법한 말인지 평가한다."
+NATURAL_JUDGE_REQUEST = (
+    "아래는 모르는 번호로 걸려 온 전화 통화 기록이다. [발신]은 전화를 건 사람, [수신]은 전화를 받은 사람이다. "
+    "종료 사유: {end_reason}\n\n{transcript}\n\n"
+    "번호가 붙은 발화마다, 그 발화가 나오기 전까지의 대화만 근거로 그 발화가 자연스러운지 0~2점으로 매겨라(뒤에 일어난 일은 보지 않는다).\n"
+    "0점(부자연스럽다): 비문이거나 뜻이 안 통함 / 서술문·지문·대본처럼 쓰거나 화자 표시·외국어가 섞임 / 상대 말을 그대로 따라 하거나 요약함 / "
+    "이미 한 인사·사과·작별을 또 함 / 직전 말에 맞지 않는 엉뚱한 응답 / 전화를 받은 사람이 상대를 도와주려 하거나 안내문·공문서처럼 말함 / 한 번에 너무 길게 말함.\n"
+    "1점(어색하지만 말은 됨): 딱딱하거나 길거나 어휘가 어색함, 맥락이 조금 어긋남.\n"
+    "2점(자연스럽다): 짧은 입말이고, 직전 말에 맞게 응답하고, 자기 입장(건 사람·받은 사람)에 맞는 말.\n"
+    "내용이 옳은지(사실 여부)는 보지 않고 말투와 흐름만 본다. 짧은 맞장구나 대답이라도 직전 말에 맞으면 2점이다. "
+    "또 통화 끝맺음이 자연스러운지(ending_ok)도 판단하라. submit_naturalness 도구로 제출하라."
+)
 WIKI_RULE_ON = "상황별 요령·금지 사항·지식은 위키 도구로 추가·수정하라. 고칠 수 없는 문서는 건드리지 마라. "
 WIKI_RULE_OFF = "위키는 읽기만 할 수 있다. 상황별 요령도 system.md의 줄로 쓰고(전체 {max_chars}자 이내), 위키를 고치려 하지 마라. "

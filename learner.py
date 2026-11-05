@@ -162,8 +162,7 @@ def _grams(text: str, k: int = COPY_GRAM) -> set[str]:
 FACT_CHECK_MAX_TOKENS = 2500
 
 
-def _fact_source(rows: list[dict], prompt_text: str) -> str:
-    """사실 근거로 인정하는 글: 현재 system.md, 통화 목적, 읽기 전용 문서(사람이 정한 지식)."""
+def _readonly_docs() -> list[str]:
     docs = []
     for rel in wiki_store.list_pages():
         if wiki_store.is_readonly(rel):
@@ -171,19 +170,21 @@ def _fact_source(rows: list[dict], prompt_text: str) -> str:
                 docs.append(wiki_store.read(rel))
             except wiki_store.WikiError:
                 pass
+    return docs
+
+
+def _fact_source(rows: list[dict], prompt_text: str, docs: list[str] | None = None) -> str:
+    """사실 근거로 인정하는 글: 현재 system.md, 통화 목적, 읽기 전용 문서(사람이 정한 지식).
+    docs를 주면 위키 대신 그 문서들을 쓴다(벤치가 시나리오마다 근거를 따로 줄 때)."""
+    docs = _readonly_docs() if docs is None else docs
     return "\n\n".join([prompt_text, *dict.fromkeys(r.get("purpose", "") for r in rows), *docs])
 
 
-def _decoys(rows: list[dict], k: int = 3) -> list[str]:
+def _decoys(rows: list[dict], k: int = 3, docs: list[str] | None = None) -> list[str]:
     """검사 글에 섞을 '근거가 확실한' 문장: 읽기 전용 문서와 통화 목적의 문장. 실측에서 14B 검사기는 문장 하나만 주면
     정상 문장까지 전부 지적했고(정상 4/4 오차단), 여러 문장이 섞이면 구분했다(정상 0/8 오차단)."""
-    parts = []  # 사실을 서술한 읽기 전용 문서를 먼저, 통화 목적(사실 서술이 아님)은 뒤에 둔다. 목적 문구를 미끼로 쓰면 검사기가 지적했다
-    for rel in wiki_store.list_pages():
-        if wiki_store.is_readonly(rel):
-            try:
-                parts.append(wiki_store.read(rel))
-            except wiki_store.WikiError:
-                pass
+    # 사실을 서술한 읽기 전용 문서를 먼저, 통화 목적(사실 서술이 아님)은 뒤에 둔다. 목적 문구를 미끼로 쓰면 검사기가 지적했다
+    parts = list(_readonly_docs() if docs is None else docs)
     parts += [r.get("purpose", "") for r in rows]
     out: list[str] = []
     for part in parts:
@@ -194,7 +195,7 @@ def _decoys(rows: list[dict], k: int = 3) -> list[str]:
     return out[:k]
 
 
-def _fact_check(text: str, source: str, llm: LLMConfig, attempts: int = 2, decoys: list[str] | None = None, lenient: bool = False) -> list[str] | None:
+def _fact_check(text: str, source: str, llm: LLMConfig, attempts: int = 2, decoys: list[str] | None = None, lenient: bool = False, request: str = FACT_CHECK_REQUEST) -> list[str] | None:
     """글 속의, 근거 문서에 없는 사실 주장 문장 목록. 숫자 없는 지어내기까지 잡는다. 검사 실패는 None(막지 않는다).
 
     decoys(근거가 확실한 문장)를 글에 섞어 검사하고, 검사기가 그 문장을 지적하면 전부 지적하는 상태이므로 결과를 버린다(None).
@@ -207,7 +208,7 @@ def _fact_check(text: str, source: str, llm: LLMConfig, attempts: int = 2, decoy
         random.Random(len(text)).shuffle(items)
         mixed = "\n".join(items)
     agent = PhoneAgent("checker", None, "검사자", "글의 사실 주장이 근거 문서에 있는지 검사한다.", llm)
-    request = FACT_CHECK_REQUEST.format(source=source, text=mixed)
+    request = request.format(source=source, text=mixed)
     for _ in range(attempts):
         content, _, meta = agent._complete(
             messages=[{"role": "system", "content": agent.system_prompt}, {"role": "user", "content": request}],
@@ -241,11 +242,14 @@ def _fact_check(text: str, source: str, llm: LLMConfig, attempts: int = 2, decoy
     return None
 
 
-def _fact_check_vote(text: str, source: str, llm: LLMConfig, decoys: list[str] | None = None, runs: int = 2, tries: int = 1, lenient: bool = False, parallel: bool = False) -> list[str] | None:
+def _fact_check_vote(text: str, source: str, llm: LLMConfig, decoys: list[str] | None = None, runs: int = 2, tries: int = 1, lenient: bool = False, parallel: bool = False, combine: str = "all", request: str = FACT_CHECK_REQUEST) -> list[str] | None:
     """_fact_check를 runs번 돌려 모든 실행이 함께 지적한 문장만 돌려준다. 한 번의 지적은 정상 요령 문장을 막는 일이 있었다
-    (실측: 행동 지시 한 줄 오차단). 실행 중 믿을 수 없는 결과(None)가 나오면 처음부터 tries번까지 다시 해 보고, 끝내 안 되면 None."""
+    (실측: 행동 지시 한 줄 오차단). 실행 중 믿을 수 없는 결과(None)가 나오면 처음부터 tries번까지 다시 해 보고, 끝내 안 되면 None.
+
+    combine="any"면 한 번이라도 지적한 문장을 모두 돌려준다(합집합). 강화학습 보상용: 놓친 지어내기는 정책이 그 빈틈을 배우므로
+    오지적을 감수하고 재현율을 우선한다. 학습자 가드의 기본은 "all"(정밀도 우선)이고 request로 검사 문구를 바꿀 수 있다."""
     for _ in range(max(1, tries)):
-        check = lambda _: _fact_check(text, source, llm, decoys=decoys, lenient=lenient)
+        check = lambda _: _fact_check(text, source, llm, decoys=decoys, lenient=lenient, request=request)
         if parallel and runs > 1:  # 서버가 요청 2개를 동시에 처리하므로 같은 검사를 동시에 돌려 시간을 줄인다
             with ThreadPoolExecutor(runs) as ex:
                 results = list(ex.map(check, range(runs)))
@@ -253,6 +257,11 @@ def _fact_check_vote(text: str, source: str, llm: LLMConfig, decoys: list[str] |
             results = [check(i) for i in range(runs)]
         if any(r is None for r in results):
             continue
+        if combine == "any":
+            merged: list[str] = []
+            for r in results:
+                merged += [c for c in r if not any(_same_line(c, m) or _same_line(m, c) for m in merged)]
+            return merged
         first, rest = results[0], results[1:]
         return [c for c in first if all(any(_same_line(c, o) or _same_line(o, c) for o in r) for r in rest)]
     return None
