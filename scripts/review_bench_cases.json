@@ -1,0 +1,706 @@
+[
+ {
+  "scenario": "구독 가입 권유",
+  "purpose": "음악 스트리밍 구독 가입 권유",
+  "kind": "수락",
+  "expect": {
+   "stage": 4,
+   "achieved": true
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 멜로디플러스입니다. 월 5,000원 음악 스트리밍 구독 안내 전화드렸어요. 가입해 보시겠어요?"
+   ],
+   [
+    "callee",
+    "오, 괜찮네요. 가입할게요."
+   ],
+   [
+    "caller",
+    "감사합니다. 이어서 가입 절차 안내드리겠습니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "구독 가입 권유",
+  "purpose": "음악 스트리밍 구독 가입 권유",
+  "kind": "유보",
+  "expect": {
+   "stage": 3,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 멜로디플러스입니다. 월 5,000원 음악 스트리밍 구독 안내 전화드렸어요. 가입해 보시겠어요?"
+   ],
+   [
+    "callee",
+    "음, 한번 생각해 볼게요. 나중에 연락 주세요."
+   ],
+   [
+    "caller",
+    "네, 알겠습니다. 좋은 하루 되세요."
+   ]
+  ]
+ },
+ {
+  "scenario": "구독 가입 권유",
+  "purpose": "음악 스트리밍 구독 가입 권유",
+  "kind": "관심만",
+  "expect": {
+   "stage": 2,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 멜로디플러스입니다. 음악 스트리밍 구독 서비스 안내 전화예요."
+   ],
+   [
+    "callee",
+    "음악 구독이요? 얼마예요?"
+   ],
+   [
+    "caller",
+    "월 5,000원입니다."
+   ],
+   [
+    "callee",
+    "아, 그렇구나."
+   ],
+   [
+    "caller",
+    "네, 그럼 좋은 하루 되세요."
+   ]
+  ]
+ },
+ {
+  "scenario": "구독 가입 권유",
+  "purpose": "음악 스트리밍 구독 가입 권유",
+  "kind": "용건 전달 후 거절",
+  "expect": {
+   "stage": 1,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 멜로디플러스입니다. 월 5,000원 음악 스트리밍 구독 서비스 안내드립니다."
+   ],
+   [
+    "callee",
+    "필요 없어요."
+   ],
+   [
+    "caller",
+    "알겠습니다. 죄송합니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "구독 가입 권유",
+  "purpose": "음악 스트리밍 구독 가입 권유",
+  "kind": "용건 전 종료",
+  "expect": {
+   "stage": 0,
+   "achieved": false
+  },
+  "end": "hangup_by_callee",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 멜로디플러스입니다. 잠시 통화 괜찮으세요?"
+   ],
+   [
+    "callee",
+    "바빠서 안 됩니다."
+   ],
+   [
+    "caller",
+    "죄송합니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "설문 참여",
+  "purpose": "주민센터 주민 만족도 설문 참여 요청",
+  "kind": "수락",
+  "expect": {
+   "stage": 4,
+   "achieved": true
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 주민센터입니다. 주민 만족도 설문에 참여해 주실 수 있을까요? 5문항, 3분 정도 걸립니다."
+   ],
+   [
+    "callee",
+    "아, 3분이면 괜찮아요. 참여할게요."
+   ],
+   [
+    "caller",
+    "감사합니다. 그럼 첫 번째 질문부터 드리겠습니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "설문 참여",
+  "purpose": "주민센터 주민 만족도 설문 참여 요청",
+  "kind": "유보",
+  "expect": {
+   "stage": 3,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 주민센터입니다. 주민 만족도 설문에 참여해 주실 수 있을까요? 5문항, 3분 정도 걸립니다."
+   ],
+   [
+    "callee",
+    "지금은 바쁜데, 나중에 다시 해도 될까요?"
+   ],
+   [
+    "caller",
+    "네, 그럼 저녁에 다시 연락드리겠습니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "설문 참여",
+  "purpose": "주민센터 주민 만족도 설문 참여 요청",
+  "kind": "관심만",
+  "expect": {
+   "stage": 2,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 주민센터입니다. 주민 만족도 설문을 진행하고 있습니다."
+   ],
+   [
+    "callee",
+    "설문이요? 어떤 내용인데요?"
+   ],
+   [
+    "caller",
+    "주민센터 이용 만족도를 묻는 5문항입니다."
+   ],
+   [
+    "callee",
+    "흠, 그렇군요."
+   ],
+   [
+    "caller",
+    "그럼 안녕히 계세요."
+   ]
+  ]
+ },
+ {
+  "scenario": "설문 참여",
+  "purpose": "주민센터 주민 만족도 설문 참여 요청",
+  "kind": "용건 전달 후 거절",
+  "expect": {
+   "stage": 1,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 주민센터입니다. 주민 만족도 설문 조사를 하고 있습니다."
+   ],
+   [
+    "callee",
+    "설문 같은 건 안 합니다."
+   ],
+   [
+    "caller",
+    "알겠습니다. 감사합니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "설문 참여",
+  "purpose": "주민센터 주민 만족도 설문 참여 요청",
+  "kind": "용건 전 종료",
+  "expect": {
+   "stage": 0,
+   "achieved": false
+  },
+  "end": "hangup_by_callee",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 주민센터입니다. 잠시 통화 가능하신가요?"
+   ],
+   [
+    "callee",
+    "누구세요? 모르는 번호는 안 받아요."
+   ],
+   [
+    "caller",
+    "죄송합니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "예약 확인",
+  "purpose": "내일 오후 3시 치과 예약 참석 확인",
+  "kind": "수락",
+  "expect": {
+   "stage": 4,
+   "achieved": true
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 해맑은치과입니다. 내일 오후 3시 진료 예약이 있으신데 오실 수 있으신가요?"
+   ],
+   [
+    "callee",
+    "네, 내일 3시에 갈게요."
+   ],
+   [
+    "caller",
+    "확인했습니다. 내일 뵙겠습니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "예약 확인",
+  "purpose": "내일 오후 3시 치과 예약 참석 확인",
+  "kind": "유보",
+  "expect": {
+   "stage": 3,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 해맑은치과입니다. 내일 오후 3시 진료 예약이 있으신데 오실 수 있으신가요?"
+   ],
+   [
+    "callee",
+    "아직 일정을 몰라서요. 보고 나서 제가 다시 전화할게요."
+   ],
+   [
+    "caller",
+    "알겠습니다. 오전까지 연락 부탁드립니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "예약 확인",
+  "purpose": "내일 오후 3시 치과 예약 참석 확인",
+  "kind": "관심만",
+  "expect": {
+   "stage": 2,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 해맑은치과입니다. 내일 오후 3시에 예약이 있어 안내드립니다."
+   ],
+   [
+    "callee",
+    "아, 그래요? 어디 치과죠?"
+   ],
+   [
+    "caller",
+    "해맑은치과입니다."
+   ],
+   [
+    "callee",
+    "네."
+   ],
+   [
+    "caller",
+    "그럼 끊겠습니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "예약 확인",
+  "purpose": "내일 오후 3시 치과 예약 참석 확인",
+  "kind": "용건 전달 후 거절",
+  "expect": {
+   "stage": 1,
+   "achieved": false
+  },
+  "end": "hangup_by_callee",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 해맑은치과입니다. 내일 오후 3시 진료 예약 안내드립니다."
+   ],
+   [
+    "callee",
+    "그런 예약 한 적 없는데요. 끊을게요."
+   ],
+   [
+    "caller",
+    "죄송합니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "예약 확인",
+  "purpose": "내일 오후 3시 치과 예약 참석 확인",
+  "kind": "용건 전 종료",
+  "expect": {
+   "stage": 0,
+   "achieved": false
+  },
+  "end": "hangup_by_callee",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 해맑은치과입니다."
+   ],
+   [
+    "callee",
+    "잘못 거셨어요."
+   ],
+   [
+    "caller",
+    "죄송합니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "일정 협의",
+  "purpose": "택배 재배송 날짜 협의",
+  "kind": "수락",
+  "expect": {
+   "stage": 4,
+   "achieved": true
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 택배 기사입니다. 지난번 못 받으신 택배를 금요일 오전에 재배송해도 될까요?"
+   ],
+   [
+    "callee",
+    "금요일 오전이면 좋아요. 그때 받을게요."
+   ],
+   [
+    "caller",
+    "알겠습니다. 금요일 오전에 가겠습니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "일정 협의",
+  "purpose": "택배 재배송 날짜 협의",
+  "kind": "유보",
+  "expect": {
+   "stage": 3,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 택배 기사입니다. 지난번 못 받으신 택배를 금요일 오전에 재배송해도 될까요?"
+   ],
+   [
+    "callee",
+    "집에 사람이 있을지 몰라서요. 확인하고 문자 드릴게요."
+   ],
+   [
+    "caller",
+    "네, 문자 기다리겠습니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "일정 협의",
+  "purpose": "택배 재배송 날짜 협의",
+  "kind": "관심만",
+  "expect": {
+   "stage": 2,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 택배 기사입니다. 재배송 건으로 전화드렸습니다."
+   ],
+   [
+    "callee",
+    "무슨 택배죠?"
+   ],
+   [
+    "caller",
+    "지난번에 부재중이셨던 택배입니다."
+   ],
+   [
+    "callee",
+    "아, 그거요."
+   ],
+   [
+    "caller",
+    "네, 그럼 수고하세요."
+   ]
+  ]
+ },
+ {
+  "scenario": "일정 협의",
+  "purpose": "택배 재배송 날짜 협의",
+  "kind": "용건 전달 후 거절",
+  "expect": {
+   "stage": 1,
+   "achieved": false
+  },
+  "end": "hangup_by_caller",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 택배 기사입니다. 지난번 못 받으신 택배 재배송 건으로 전화드렸습니다."
+   ],
+   [
+    "callee",
+    "그 택배는 필요 없으니 반송해 주세요."
+   ],
+   [
+    "caller",
+    "알겠습니다. 반송 처리하겠습니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "일정 협의",
+  "purpose": "택배 재배송 날짜 협의",
+  "kind": "용건 전 종료",
+  "expect": {
+   "stage": 0,
+   "achieved": false
+  },
+  "end": "hangup_by_callee",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 택배 기사입니다. 잠시 통화 괜찮으세요?"
+   ],
+   [
+    "callee",
+    "지금 운전 중이에요."
+   ],
+   [
+    "caller",
+    "죄송합니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "구독 가입 권유",
+  "purpose": "음악 스트리밍 구독 가입 권유",
+  "kind": "추측 거절",
+  "expect": {
+   "stage": 0,
+   "achieved": false
+  },
+  "end": "hangup_by_callee",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 멜로디플러스입니다. 잠시 통화 괜찮으세요?"
+   ],
+   [
+    "callee",
+    "아, 구독 같은 건 안 해요. 끊을게요."
+   ],
+   [
+    "caller",
+    "죄송합니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "설문 참여",
+  "purpose": "주민센터 주민 만족도 설문 참여 요청",
+  "kind": "추측 거절",
+  "expect": {
+   "stage": 0,
+   "achieved": false
+  },
+  "end": "hangup_by_callee",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 주민센터입니다. 잠시 통화 가능하신가요?"
+   ],
+   [
+    "callee",
+    "설문 조사 같은 거면 안 받아요."
+   ],
+   [
+    "caller",
+    "알겠습니다. 죄송합니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "예약 확인",
+  "purpose": "내일 오후 3시 치과 예약 참석 확인",
+  "kind": "추측 거절",
+  "expect": {
+   "stage": 0,
+   "achieved": false
+  },
+  "end": "hangup_by_callee",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 해맑은치과입니다. 잠시 통화 괜찮으세요?"
+   ],
+   [
+    "callee",
+    "병원 예약이라면 제가 한 적 없어요. 끊습니다."
+   ],
+   [
+    "caller",
+    "죄송합니다."
+   ]
+  ]
+ },
+ {
+  "scenario": "일정 협의",
+  "purpose": "택배 재배송 날짜 협의",
+  "kind": "추측 거절",
+  "expect": {
+   "stage": 0,
+   "achieved": false
+  },
+  "end": "hangup_by_callee",
+  "turns": [
+   [
+    "callee",
+    "여보세요?"
+   ],
+   [
+    "caller",
+    "안녕하세요, 택배 기사입니다. 잠시 통화 괜찮으세요?"
+   ],
+   [
+    "callee",
+    "택배요? 받을 거 없는데요. 끊을게요."
+   ],
+   [
+    "caller",
+    "죄송합니다."
+   ]
+  ]
+ }
+]
