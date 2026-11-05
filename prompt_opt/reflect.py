@@ -31,7 +31,15 @@ EDIT_TOOL = wiki_store._tool(
     ["action", "line_id"],
 )
 CREATE_TOOL = wiki_store._tool(
-    "doc_create", "새 위키 문서를 만든다(경로는 위키 안의 상대경로)", {"path": _STR, "content": _STR}, ["path", "content"])
+    "doc_create", "새 위키 문서를 만든다. path는 위키 폴더 안의 상대경로이고 'wiki/'로 시작하지 않는다(예: 응대/새요령)",
+    {"path": _STR, "content": _STR}, ["path", "content"])
+
+
+def strip_wiki_prefix(path: str) -> str:
+    """학습자가 위키 안의 경로 대신 후보 문서 키처럼 'wiki/상담/요령'을 보내는 일이 있었다(실서버 관찰). 그대로 두면
+    위키 안에 wiki/ 폴더가 생겨 문서 키가 wiki/wiki/…가 되고 --apply 때 저장소 위키에 중첩 폴더가 생긴다. 앞의 'wiki/'를 한 번만 뗀다."""
+    p = path.strip().replace("\\", "/")
+    return p[len(WIKI):] if p.startswith(WIKI) else p
 
 _QUOTE_RE = re.compile(r"['\"‘“][^'\"’”]*['\"’”]")
 
@@ -134,7 +142,7 @@ def reflect(parent: Candidate, calls: list[dict], *, cid: str, iteration: int, t
             if state["created"]:
                 return "오류: 새 문서는 하나만 만듭니다. 바꾼 내용을 한두 줄로 요약하며 끝내세요"
             try:
-                rel, full = wiki_store._resolve(str(a.get("path", "")))
+                rel, full = wiki_store._resolve(strip_wiki_prefix(str(a.get("path", ""))))
             except wiki_store.WikiError as e:
                 return f"오류: {e}"
             content = str(a.get("content") or "").strip()
