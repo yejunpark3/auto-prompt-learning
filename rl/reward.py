@@ -10,7 +10,9 @@
 --no-judge는 모델 없이 결정적 결함만 센다(캐시하지 않는다).
 """
 import argparse
+import dataclasses
 import json
+import os
 import re
 import statistics
 import sys
@@ -29,7 +31,10 @@ from prompts import (
 )
 from rl import fabrication, judge_config
 
-VERSION = 3  # 2: 심판 요청문에 번호 붙은 발화 수(n)를 명시(점수 개수 불일치 감소). 3: 매기기 전에 되풀이·따라 하기를 먼저 확인하라는 지시(0점 재현율 10%→27%)
+# 자연스러움 심판만 쓰는 샘플링 온도. 낮출수록 판정이 일관되고 정밀해졌다(벤치: 0.6 → 0.2에서 0점 재현율 27→34%, 정밀도 52→68%).
+# 같은 설정(judge_config)을 쓰는 리뷰어·사실 검사기는 바꾸지 않는다(리뷰어는 review_bench로 따로 검증해야 한다).
+NATURAL_JUDGE_TEMPERATURE = float(os.environ.get("NATURAL_JUDGE_TEMPERATURE", "0.2"))
+VERSION = 4  # 4: 심판 온도 0.2. 2: 심판 요청문에 번호 붙은 발화 수(n)를 명시(점수 개수 불일치 감소). 3: 매기기 전에 되풀이·따라 하기를 먼저 확인하라는 지시(0점 재현율 10%→27%)
 FLOOR = -1.0
 DEFECT_W = 0.2     # 발화당 결함 한 건의 벌점(결함 수/발화 수에 곱한다)
 ENDING_W = 0.3     # 끝맺음이 부자연스러울 때의 벌점
@@ -156,6 +161,7 @@ def judge_call(record: dict, llm: LLMConfig, attempts: int = 2) -> dict | None:
     utts = _utterances(record)
     if not utts:
         return {"scores": {}, "ending_ok": False, "notes": "", "latency_s": 0.0}
+    llm = dataclasses.replace(llm, temperature=NATURAL_JUDGE_TEMPERATURE)  # 복사본이라 호출자의 설정(리뷰어 등이 같이 쓴다)은 그대로다
     agent = PhoneAgent("judge", None, "심판", NATURAL_JUDGE_SYSTEM, llm)
     request = NATURAL_JUDGE_REQUEST.format(end_reason=record["end_reason"], transcript=_transcript(record, utts), n=len(utts))
     latency = 0.0
