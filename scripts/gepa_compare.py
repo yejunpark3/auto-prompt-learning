@@ -156,6 +156,7 @@ def summarize(cells, runs: dict[str, "RN.Run"], objectives: list[str]) -> dict:
                    "calls_per_hour": rep["calls_per_hour"], "iterations": rep["iterations"], "accepted": rep["accepted"],
                    "accepted_but_worse_on_D": rep["accepted_but_worse_on_D"],
                    "misadopt_rate": round(rep["accepted_but_worse_on_D"] / rep["accepted"], 3) if rep["accepted"] else None,
+                   "confirm_failed": rep["confirm_failed"],
                    "calls_per_accept": rep["calls_per_accept"], "front_size": len(rep["front"]) or None, "merges_tried": rep["merges_tried"],
                    "merges_accepted": rep["merges_accepted"], "slot_utilization": rep["slot_utilization"], "prefetch": rep["prefetch"],
                    "c1_rate_D": next((t["c1_rate"] for t in rep["table"] if t["cid"] == rep["best"]), None), "c1_rate_H": c1_rate(cells, n)}
@@ -196,13 +197,13 @@ def render_md(res: dict, meta: dict) -> str:
         for k, v in res["vs_arm"].items():
             L.append(f"| {k} | " + " | ".join(_delta(v[o]) for o in objs) + " |")
     L.append("\n## 비용과 채택의 질 (탐색 과정, 같은 예산)\n")
-    L.append("| 실행 | 전략 | best | 통화 | 시간(h) | 통화/h | 채택 | D 전체로 부모보다 못함 | 채택 1건당 통화 | 프런티어 | 병합 시도/채택 | 슬롯 사용률 | 선행 반성 | C1(D) |")
-    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    L.append("| 실행 | 전략 | best | 통화 | 시간(h) | 통화/h | 채택 | D 전체로 부모보다 못함 | 확인 단계 탈락 | 채택 1건당 통화 | 프런티어 | 병합 시도/채택 | 슬롯 사용률 | 선행 반성 | C1(D) |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for n, c in res["cost"].items():
         pf = c["prefetch"]
         pfs = f"{pf['used']}회, 반성 {pf['reflect_s'] / 60:.1f}분 중 {max(0.0, pf['reflect_s'] - pf['wait_s']) / 60:.1f}분 겹침" if pf["used"] else "—"
         mis = "—" if c["misadopt_rate"] is None else f"{c['accepted_but_worse_on_D']}/{c['accepted']} ({c['misadopt_rate']:.0%})"
-        L.append(f"| {n} | {c['strategy']} | {c['best']} | {c['calls_used']} | {_f(c['elapsed_h'])} | {_f(c['calls_per_hour'], 1)} | {c['accepted']} | {mis} | "
+        L.append(f"| {n} | {c['strategy']} | {c['best']} | {c['calls_used']} | {_f(c['elapsed_h'])} | {_f(c['calls_per_hour'], 1)} | {c['accepted']} | {mis} | {c['confirm_failed']} | "
                  f"{_f(c['calls_per_accept'], 1)} | {c['front_size'] or '—'} | {c['merges_tried']}/{c['merges_accepted']} | {c['slot_utilization'] or '—'} | {pfs} | {_f(c['c1_rate_D'])} |")
     L.append("\n## 읽는 법\n")
     L.append(f"- Δ가 표준오차(±)보다 크면 '구분됨', 아니면 '잡음 범위'다. 수신자 {meta['n_recipients']}명에서는 잡음 범위가 흔하다. 그래서 점수 차이만으로 결론내지 않고 "

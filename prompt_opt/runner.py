@@ -68,10 +68,13 @@ class Config:
     seq_max: int = 6
     allow_new_docs: bool = True
     prefetch: bool = False  # ours 전용: 다음 반성을 현재 후보를 시험하는 동안 미리 돌린다(느린 로컬 모델의 대기 시간을 겹친다)
+    # ours 전용: 선별에서 채택된 후보를 선별에 쓰지 않은 나머지 수신자로 확인한다(한쪽 t 검정 유의수준 α). 0이면 확인하지 않는다(옛 동작).
+    # 저장된 옛 실행은 0으로 읽혀 동작이 바뀌지 않고, CLI는 ours에 0.20을 준다.
+    confirm_alpha: float = 0.0
 
     # 이어 돌릴 때 달라지면 안 되는 값(알고리즘·평가 대상을 바꾼다). 예산·병렬 수는 바꿔도 된다.
     FIXED = ("strategy", "purpose", "metric", "seeds", "per_seed", "max_turns", "system_max", "wiki_max", "minibatch",
-             "rng_seed", "hill_tol", "seq_start", "seq_step", "seq_max", "allow_new_docs", "prefetch")
+             "rng_seed", "hill_tol", "seq_start", "seq_step", "seq_max", "allow_new_docs", "prefetch", "confirm_alpha")
 
     @classmethod
     def from_dict(cls, d: dict) -> "Config":
@@ -481,13 +484,26 @@ class Run:
         while True:
             batch = order[:upto]
             self.eval_cells(child, batch)
-            v = S.verdict({o: S.paired_deltas(self.values(child, o), self.values(ref, o), batch) for o in self.objectives})
+            deltas = {o: S.paired_deltas(self.values(child, o), self.values(ref, o), batch) for o in self.objectives}
+            v = S.verdict(deltas)
             if v != "more" or upto >= min(cfg.seq_max, len(order)):
                 break
             upto = min(upto + cfg.seq_step, cfg.seq_max, len(order))
-        return ("accepted" if v == "accept" else "rejected"), {
-            "verdict": v if v != "more" else "undecided", "tested_uuids": order[:upto],
-            "delta": self._delta_info(child, ref, order[:upto])}
+        extra = {"verdict": v if v != "more" else "undecided", "tested_uuids": order[:upto],
+                 "delta": self._delta_info(child, ref, order[:upto])}
+        if v == "accept":
+            extra["passed"] = S.passed_objectives(deltas)  # 확인 단계는 선별을 통과한 목표만 본다
+        return ("accepted" if v == "accept" else "rejected"), extra
+
+    def confirm(self, p: dict) -> tuple[bool | None, dict]:
+        """선별에서 채택된 후보를, 선별에 쓰지 않은 수신자(D 전체 − 시험한 수신자)의 짝 차이로 확인한다.
+        True 확인됨 / False 탈락 / None 새 표본이 2명 미만이라 판정하지 않음. 자세한 값은 info."""
+        child, ref = p["child"], p["ref"]
+        tested = set(p["extra"].get("tested_uuids", []))
+        fresh = [u for u in self.D if u not in tested]
+        objs = p["extra"].get("passed") or self.objectives
+        ok, info = S.confirm({o: S.paired_deltas(self.values(child, o), self.values(ref, o), fresh) for o in objs}, self.cfg.confirm_alpha)
+        return ok, {"alpha": self.cfg.confirm_alpha, "fresh": len(fresh), "objectives": info, "result": {True: "confirmed", False: "failed", None: "skipped"}[ok]}
 
     def settle(self, p: dict) -> None:
         """대기 중인 후보를 시험해 채택·기각하고 기록한다. 중간에 멈춰도 같은 --run으로 이어진다(칸 단위 캐시)."""
@@ -497,6 +513,11 @@ class Run:
             self.save()
         if p["decision"] == "accepted":
             self.eval_cells(p["child"], self.D)  # 나머지 수신자까지 평가해 풀에 넣는다
+            if self.cfg.strategy == "ours" and self.cfg.confirm_alpha:
+                ok, info = self.confirm(p)  # 이 통화들은 어차피 쓴 것이다: 선별에 안 쓴 독립 표본으로 선별 결과를 확인한다
+                p["extra"]["confirm"] = info
+                if ok is False:
+                    p["decision"], p["extra"]["reason"] = "rejected", "confirm_failed"
         entry = {"iter": p["iter"], "kind": p["kind"], "parent": p["parent"], "parents": p["parents"], "child": p["child"],
                  "target": p.get("target"), "decision": p["decision"], **p["extra"], "calls_used": st["calls_used"]}
         st["history"].append(entry)
@@ -571,11 +592,12 @@ class Run:
         worse = [h for h in accepted if (cm := self.mean(h["child"], self.primary)) is not None
                  and (pm := self.mean(h["parent"], self.primary)) is not None and cm < pm]
         decided = [h for h in st["history"] if h["decision"] in ("accepted", "rejected")]
+        confirm_failed = sum(1 for h in decided if h.get("reason") == "confirm_failed")
         calls_per_accept = round(st["calls_used"] / len([h for h in decided if h["decision"] == "accepted"]), 1) \
             if any(h["decision"] == "accepted" for h in decided) else None
         return {"strategy": self.cfg.strategy, "metric": self.cfg.metric, "stopped": st["stopped"], "calls_used": st["calls_used"],
                 "budget": self.cfg.budget, "elapsed_s": st["elapsed_s"], "iterations": st["iter"], "candidates": len(self.cands),
-                "accepted": len(accepted), "accepted_but_worse_on_D": len(worse), "merges_tried": st["merges_done"],
+                "accepted": len(accepted), "accepted_but_worse_on_D": len(worse), "confirm_failed": confirm_failed, "merges_tried": st["merges_done"],
                 "merges_accepted": sum(1 for h in decided if h["kind"] == "merge" and h["decision"] == "accepted"),
                 "calls_per_accept": calls_per_accept, "calls_per_hour": round(st["calls_used"] / (st["elapsed_s"] / 3600), 2) if st["elapsed_s"] else None,
                 "prefetch": st["prefetch_stats"], "slot_utilization": st.get("slot_utilization"), "best": best, "table": rows,
@@ -589,7 +611,7 @@ class Run:
             mark = " ★" if t["cid"] == r["best"] else ""
             print(f"{t['cid']:6} {t['kind']:8} {','.join(t['parents']) or '-':14} {_fmt(t['natural']):>8} {_fmt(t['task']):>6} "
                   f"{t['n']:>3} {_fmt(t['c1_rate']):>9}{mark}")
-        print(f"반복 {r['iterations']}, 후보 {r['candidates']}, 채택 {r['accepted']}(D 전체로는 부모보다 못함 {r['accepted_but_worse_on_D']}), "
+        print(f"반복 {r['iterations']}, 후보 {r['candidates']}, 채택 {r['accepted']}(D 전체로는 부모보다 못함 {r['accepted_but_worse_on_D']}, 확인 단계 탈락 {r['confirm_failed']}), "
               f"병합 시도 {r['merges_tried']}/채택 {r['merges_accepted']}, 채택 1건당 통화 {r['calls_per_accept']}")
         pf = r["prefetch"]
         print(f"속도: 시간당 통화 {r['calls_per_hour']}" + (f", 슬롯 사용률 {r['slot_utilization']}" if r["slot_utilization"] else "")
@@ -729,6 +751,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--hill-tol", type=float, default=d.hill_tol)
     p.add_argument("--no-new-docs", action="store_true", help="반성이 새 위키 문서를 만들지 못하게 한다")
     p.add_argument("--no-prefetch", action="store_true", help="ours에서 선행 반성(다음 반성을 시험과 겹쳐 돌림)을 끈다")
+    p.add_argument("--confirm-alpha", type=float, default=0.20, choices=(0.0, *S.CONFIRM_ALPHAS),
+                   help="ours에서 선별에 채택된 후보를 나머지 수신자로 확인하는 한쪽 t 검정 유의수준(0이면 확인 안 함). 작을수록 엄격하다")
     p.add_argument("--caller-prompt", default=learner.SYSTEM_PROMPT_PATH, help="첫 후보로 쓸 system.md")
     add_llm_args(p)
     p.add_argument("--max-iters", type=int, help="이번 실행에서 처리할 반복 수 상한(스모크용)")
@@ -757,7 +781,8 @@ def main(argv=None) -> None:
         want = Config(args.strategy or saved.strategy, args.purpose or saved.purpose, args.metric, [int(s) for s in args.seeds.split(",")],
                       args.per_seed, args.budget, args.minibatch, args.max_turns, args.rng_seed, args.system_max, args.wiki_max,
                       args.workers, args.max_merges, args.hill_tol, saved.seq_start, saved.seq_step, saved.seq_max, not args.no_new_docs,
-                      (args.strategy or saved.strategy) == "ours" and not args.no_prefetch)
+                      (args.strategy or saved.strategy) == "ours" and not args.no_prefetch,
+                      args.confirm_alpha if (args.strategy or saved.strategy) == "ours" else 0.0)
         # 이어 돌릴 때는 저장된 설정이 기준이다. 명령줄에서 명시적으로 다르게 준 고정 값이 있으면 막는다.
         diff = [k for k in Config.FIXED if getattr(want, k) != getattr(saved, k)
                 and not (k in ("strategy", "purpose") and not getattr(args, k))]
@@ -769,7 +794,8 @@ def main(argv=None) -> None:
         cfg = Config(args.strategy or "hillclimb", args.purpose or "", args.metric, [int(s) for s in args.seeds.split(",")],
                      args.per_seed, args.budget, args.minibatch, args.max_turns, args.rng_seed, args.system_max, args.wiki_max,
                      args.workers, args.max_merges, args.hill_tol, allow_new_docs=not args.no_new_docs,
-                     prefetch=(args.strategy == "ours" and not args.no_prefetch))
+                     prefetch=(args.strategy == "ours" and not args.no_prefetch),
+                     confirm_alpha=args.confirm_alpha if args.strategy == "ours" else 0.0)
 
     call_llm, judge_llm, reflect_llm, slots = make_llms(args)
 
